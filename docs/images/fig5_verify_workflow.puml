@@ -14,9 +14,9 @@ skinparam PartitionBorderColor #336699
 
 start
 :main();
-:CLI 引数解析\n--project / --variant / --old / --new / --xlsx\n[--report-out] [--plan];
+:CLI 引数解析\n~--project / ~--variant / ~--old / ~--new / ~--xlsx\n[~--report-out] [~--plan];
 
-if (引数バリデーション\n--old/--new がディレクトリ\n--xlsx が .xlsx ファイル?) then (NG)
+if (引数バリデーション\n~--old/~--new がディレクトリ\n~--xlsx が .xlsx ファイル?) then (NG)
   #salmon:exit=2（argparse error）;
   stop
 else (OK)
