@@ -523,7 +523,6 @@ def main():
     parser.add_argument("--old",        required=True, type=_dir_path, dest="old_dir", help="旧解析結果ディレクトリ")
     parser.add_argument("--new",        required=True, type=_dir_path, dest="new_dir", help="新解析結果ディレクトリ")
     parser.add_argument("--xlsx",       required=True, type=_xlsx_path,                help="Output差分シートを持つ Excel ファイル")
-    _default_base = Path(__file__).parent.parent
     parser.add_argument(
         "--report-out",
         default=None,
