@@ -282,3 +282,80 @@ def test_csv_out_fatal_on_undetected(tmp_path, monkeypatch):
         main()
     assert exc_info.value.code == 2, "--csv-out 時でも FATAL は exit=2 であること"
     assert not csv_out.exists(), "FATAL 終了時は CSV が出力されないこと"
+
+
+# ─────────────────────────────────────────
+# TC-CSV-9: --csv-out 時に --xlsx が存在しない場合は exit=1 で終了すること (NG-1)
+# ─────────────────────────────────────────
+
+def test_csv_out_xlsx_not_found_exits_1(tmp_path, monkeypatch):
+    """--csv-out 指定時でも --xlsx が存在しない場合は exit=1 で終了すること"""
+    import sys
+    from extract_and_write_diff import main
+
+    old_dir = tmp_path / "old"
+    new_dir = tmp_path / "new"
+    old_dir.mkdir()
+    new_dir.mkdir()
+    # xlsx は作成しない
+    xlsx = tmp_path / "nonexistent.xlsx"
+    csv_out = tmp_path / "out.csv"
+
+    monkeypatch.setattr(
+        sys, "argv",
+        [
+            "extract_and_write_diff.py",
+            "--project", "ver1",
+            "--variant", "m02",
+            "--old", str(old_dir),
+            "--new", str(new_dir),
+            "--xlsx", str(xlsx),
+            "--csv-out", str(csv_out),
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+    assert exc_info.value.code == 1, "--xlsx が存在しないときは exit=1 であること"
+    assert not csv_out.exists(), "exit=1 終了時は CSV が出力されないこと"
+
+
+# ─────────────────────────────────────────
+# TC-CSV-10: CSV 出力完了メッセージが stdout に出力されること (NG-3)
+# ─────────────────────────────────────────
+
+def test_csv_out_stdout_message(tmp_path, monkeypatch, capsys):
+    """CSV 出力完了時に 'CSV出力完了: N 件 → <パス>' が標準出力に表示されること"""
+    import openpyxl
+    from extract_and_write_diff import main
+
+    old_dir = tmp_path / "old"
+    new_dir = tmp_path / "new"
+    old_dir.mkdir()
+    new_dir.mkdir()
+
+    xlsx = tmp_path / "dummy.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Output差分"
+    wb.save(xlsx)
+
+    csv_out = tmp_path / "out.csv"
+
+    monkeypatch.setattr(
+        sys, "argv",
+        [
+            "extract_and_write_diff.py",
+            "--project", "ver1",
+            "--variant", "m02",
+            "--old", str(old_dir),
+            "--new", str(new_dir),
+            "--xlsx", str(xlsx),
+            "--csv-out", str(csv_out),
+        ],
+    )
+
+    main()
+    captured = capsys.readouterr()
+    assert "CSV出力完了" in captured.out, "stdout に 'CSV出力完了' が含まれること"
+    assert str(csv_out) in captured.out, "stdout に出力先パスが含まれること"

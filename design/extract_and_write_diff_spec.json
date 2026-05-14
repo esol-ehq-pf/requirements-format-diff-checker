@@ -151,7 +151,9 @@
     "excel_write": "行わない（排他）",
     "dry_run_conflict": "--dry-run と同時指定した場合は --csv-out を優先し、'警告: --dry-run と --csv-out が同時指定されました。--csv-out を優先します。' を標準出力に表示する",
     "zero_entries_behavior": "エントリ0件のときはヘッダ行のみ出力されるCSVが作成される（行数は0）",
-    "directory_not_found": "出力先ディレクトリが存在しない場合はFileNotFoundErrorで異常終了する。事前にディレクトリを作成しておくこと"
+    "directory_not_found": "出力先ディレクトリが存在しない場合はFileNotFoundErrorで異常終了する。事前にディレクトリを作成しておくこと",
+    "fatal_behavior": "--csv-out 指定時でも FATAL(exit=2) が発生した場合は SystemExit(2) で終了し CSV は出力されない（write_to_csv は呼ばれない）",
+    "stdout_on_success": "CSV出力完了: {N} 件 → {csv_path}  （標準出力に出力される）"
   },
   "excel_output": {
     "sheet": "Output差分",
