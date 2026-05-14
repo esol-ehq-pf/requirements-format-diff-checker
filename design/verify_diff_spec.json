@@ -36,7 +36,7 @@
   },
 
   "hardcoded_config": {
-    "note": "[DEPRECATED] RQ-10実装後は全てCLI引数で指定する。現在のハードコード値は互換維持のため残存",
+    "note": "[DEPRECATED] RQ-10実装完了済み。全引数はCLI引数で指定される。本セクションはRQ-10実装前の参照値として履歴保持（コードにハードコード値は存在しない）",
     "project": "ver1",
     "variant": "m02",
     "old_dir": "work/format-change/input/scheduling_requirement_check_analysis_result",
@@ -92,7 +92,8 @@
     },
     "exit_codes": {
       "0": "全QG PASSで正常終了",
-      "1": "いずれかのQGがFAIL"
+      "1": "いずれかのQGがFAIL",
+      "2": "CLIバリデーションエラー（argparse が自動的に発行: --old/--new が非ディレクトリ、--xlsx が非存在または非.xlsxファイル等）"
     }
   },
 
@@ -228,11 +229,11 @@
 
   "outputs": {
     "report_yaml": {
-      "path": "test/verify_report_m02.yaml",
+      "path": "test/verify_report_{variant}.yaml（--report-out 省略時。variant は --variant 引数値）",
       "sections": ["meta", "quality_gates", "overall", "phase1_file_inventory", "phase2_csv_diffs", "phase3_image_diffs", "phase4_entry_accuracy", "phase5_meta_consistency"]
     },
     "plan_yaml_update": {
-      "path": "test/review_plan_m02.yaml",
+      "path": "test/review_plan_{variant}.yaml（--plan 省略時。variant は --variant 引数値）",
       "updated_fields": ["execution_status.executed_date", "execution_status.gate_results", "execution_status.overall"]
     },
     "stdout": {
@@ -242,7 +243,7 @@
 
   "constants": {
     "LINK_TEXT": "過去プロジェクト(ver1/ver2/ver2.1)の 要件ファイルフォーマット変更",
-    "SHEET_NAME": "Output差分",
+    "SHEET_NAME": "Output差分（コードでは named constant でなく L81 のリテラル wb[\"Output差分\"] として参照）",
     "excel_data_start_row": 4,
     "image_similarity_threshold": 0.7,
     "tmp_to_temp_normalization": "'tmp' → 'temp' として実ディレクトリと照合する"

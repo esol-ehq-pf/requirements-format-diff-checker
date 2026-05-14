@@ -161,5 +161,33 @@
     "overall": "PASS"
   },
 
+  "spec_reverse_review": {
+    "review_date": "2026-05-14",
+    "method": "コード→仕様書の逆方向チェック（CLI・定数・outputs・exit_codes）",
+    "checks": [
+      {"subject": "CLI 全7引数の required/type/default",  "code_line": "L517-L545", "spec_section": "cli.arguments", "result": "OK"},
+      {"subject": "exit_codes 0/1 の sys.exit",           "code_line": "L607",       "spec_section": "cli.exit_codes", "result": "OK（F-B修正後）"},
+      {"subject": "ALLOWED_DIFF_TYPES 全17件",            "code_line": "L21-L38",    "spec_section": "allowed_diff_types", "result": "OK（完全一致）"},
+      {"subject": "LINK_TEXT リテラル",                   "code_line": "L18",        "spec_section": "constants.LINK_TEXT", "result": "OK（完全一致）"},
+      {"subject": "SHEET_NAME = 'Output差分'",            "code_line": "L81",        "spec_section": "constants.SHEET_NAME", "result": "OK（F-D注記修正後）"},
+      {"subject": "excel_data_start_row = 4",             "code_line": "L83",        "spec_section": "constants.excel_data_start_row", "result": "OK"},
+      {"subject": "image_similarity_threshold = 0.7",     "code_line": "L350",       "spec_section": "constants.image_similarity_threshold", "result": "OK"},
+      {"subject": "tmp→temp ノーマライズ",                "code_line": "L417-L420",  "spec_section": "constants.tmp_to_temp_normalization", "result": "OK"},
+      {"subject": "QG-1〜QG-4 フェーズ割り当て",         "code_line": "L486-L492",  "spec_section": "quality_gates", "result": "OK"},
+      {"subject": "hardcoded_config.note の実態整合",     "code_line": "全体",       "spec_section": "hardcoded_config.note", "result": "NG→F-A（修正済み）"},
+      {"subject": "outputs.report_yaml.path",             "code_line": "L538",       "spec_section": "outputs.report_yaml.path", "result": "NG→F-C（修正済み）"},
+      {"subject": "outputs.plan_yaml_update.path",        "code_line": "L539",       "spec_section": "outputs.plan_yaml_update.path", "result": "NG→F-C（修正済み）"},
+      {"subject": "exit_code 2 の記載",                   "code_line": "L499/L507",  "spec_section": "cli.exit_codes", "result": "NG→F-B（修正済み）"},
+      {"subject": "SHEET_NAME が named constant でない",  "code_line": "L81",        "spec_section": "constants.SHEET_NAME", "result": "NG→F-D（注記追加済み）"}
+    ],
+    "findings": [
+      {"id": "F-A", "severity": "MEDIUM", "description": "hardcoded_config.note に '現在のハードコード値は互換維持のため残存' とあったが CHG-1~3 実装後はコードにハードコード値が存在しない。stale な記述", "resolution": "note を 'RQ-10実装完了済み、コードにハードコード値は存在しない' に修正", "status": "resolved"},
+      {"id": "F-B", "severity": "LOW",    "description": "cli.exit_codes に終了コード 2（argparse バリデーションエラー）が未記載", "resolution": "exit_codes に 2: 'CLIバリデーションエラー（argparse自動発行）' を追加", "status": "resolved"},
+      {"id": "F-C", "severity": "MEDIUM", "description": "outputs.report_yaml.path と outputs.plan_yaml_update.path が m02 固定。CLI化後は {variant} テンプレートが正しい", "resolution": "path を 'test/verify_report_{variant}.yaml' 形式に修正", "status": "resolved"},
+      {"id": "F-D", "severity": "LOW",    "description": "constants.SHEET_NAME が named constant として記載されているが、コードでは L81 のリテラル参照", "resolution": "注記 '(コードでは named constant でなく L81 のリテラル wb[\"Output差分\"] として参照)' を追記", "status": "resolved"}
+    ],
+    "overall": "PASS（全4件修正済み）"
+  },
+
   "next_step": "他バリアント（ver1/b01, ver1/m01, ver2/*, ver2.1/*）の差分抽出・検証に着手"
 }
