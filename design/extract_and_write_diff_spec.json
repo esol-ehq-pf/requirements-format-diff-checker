@@ -84,7 +84,7 @@
   "excel_output": {
     "sheet": "Output差分",
     "columns": {
-      "A": "No（連番、既存最大値+1から続番）",
+      "A": "No（連番数式: 先頭行は固定値 1、以降は =A{前行}+1 の Excel 数式）",
       "B": "フォルダ（ルート直下の場合は '-'、temp配下は 'tmp'）",
       "C": "ファイル名（拡張子なし可、画像ファイルは拡張子あり）",
       "D": "差分概要",
@@ -96,7 +96,13 @@
       "J": "推定原因",
       "note_customer_column": "『差分許容できるか』列は顧客側で記入するため、ツールは書き込まない"
     },
-    "overwrite_rule": "同プロジェクト・同バリアントの既存行を全削除後、末尾に追記"
+    "overwrite_rule": "同プロジェクト・同バリアントの既存行を全削除後、末尾に追記",
+    "overwrite_detail": {
+      "step1": "H列==project かつ I列==variant の行を後ろから delete_rows() で物理削除",
+      "step2": "_delete_ghost_rows() で A列に数式のみ残ったゴースト行（B列以降が全て空）を後ろから物理削除",
+      "step3": "B列以降にデータがある行の最終行を get_last_data_row() で取得し、その次の行から新エントリを追記",
+      "note_ghost_row": "A列の =A{n}+1 数式は delete_rows() で行を削除しても残存することがある。step2 でこれを除去しないと get_last_data_row() が誤った最終行を返し、新エントリが空白行の後に追記されるバグが発生する（BUG-1/BUG-2 として修正済み）"
+    }
   },
 
   "extraction_rules": {
