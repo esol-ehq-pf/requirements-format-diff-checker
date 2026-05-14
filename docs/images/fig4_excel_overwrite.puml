@@ -1,0 +1,25 @@
+@startuml fig4_excel_overwrite
+skinparam defaultFontName "Noto Sans CJK JP"
+skinparam defaultFontSize 12
+skinparam backgroundColor white
+skinparam ArrowColor #333333
+skinparam ActivityBorderColor #555555
+skinparam ActivityBackgroundColor #FFFFEE
+skinparam StartColor #228B22
+skinparam EndColor #CC2222
+
+start
+:step1\nH列==project かつ I列==variant の行を\n後ろから delete_rows() で物理削除;
+:step2\n_delete_ghost_rows()\nA列に数式のみ残ったゴースト行\n（B列以降が全て空）を後ろから物理削除;
+note right
+  ゴースト行について:
+  delete_rows() で行削除後も A列の
+  =A{n}+1 数式だけが残る場合がある。
+  step2 で除去しないと get_last_data_row()
+  が誤った最終行を返し、空白行の後に
+  追記されるバグが発生する
+  （BUG-1/BUG-2 として修正済み）。
+end note
+:step3\nget_last_data_row()\nB列以降にデータがある最終行を取得し\n次の行から新エントリを追記;
+stop
+@enduml

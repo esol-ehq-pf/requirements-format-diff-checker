@@ -1,0 +1,24 @@
+@startuml fig3_image_diff_logic
+skinparam defaultFontName "Noto Sans CJK JP"
+skinparam defaultFontSize 12
+skinparam backgroundColor white
+skinparam ArrowColor #333333
+skinparam ActivityBorderColor #555555
+skinparam ActivityBackgroundColor #FFFFEE
+skinparam DecisionBackgroundColor #E8F4FF
+skinparam DecisionBorderColor #3399CC
+skinparam StartColor #228B22
+skinparam EndColor #CC2222
+
+start
+:各グラフディレクトリの PASS/FAIL サブフォルダを走査;
+:削除画像 = old にあって new にない画像\n追加画像 = new にあって old にない画像を抽出;
+:削除画像ごとに\n追加画像との名前類似度を計算\n（SequenceMatcher）;
+
+if (類似度 > 0.7 の追加画像が存在するか?) then (Yes)
+  :エントリ生成: 画像差分（リネーム）\ndiff_type = '画像差分'\nold_val = 旧ステム名\nnew_val = 新ステム名;
+else (No)
+  :エントリ生成: ファイル消失\ndiff_type = 'ファイル消失';
+endif
+stop
+@enduml

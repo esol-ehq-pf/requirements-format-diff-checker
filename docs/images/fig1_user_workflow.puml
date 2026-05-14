@@ -1,0 +1,27 @@
+@startuml fig1_user_workflow
+skinparam defaultFontName "Noto Sans CJK JP"
+skinparam defaultFontSize 12
+skinparam backgroundColor white
+skinparam ArrowColor #333333
+skinparam ActivityBorderColor #555555
+skinparam ActivityBackgroundColor #FFFFEE
+skinparam DecisionBackgroundColor #E8F4FF
+skinparam DecisionBorderColor #3399CC
+skinparam StartColor #228B22
+skinparam EndColor #CC2222
+
+|ユーザー|
+start
+:1. 旧解析結果ディレクトリを用意\n例: input/scheduling_requirement_check_analysis_result;
+:2. 新解析結果ディレクトリを用意\n例: input/ver1_m02_AP_再解析結果/output;
+:3. 差分管理 Excel を用意\n※ 'Output差分' シートが必要\nA:No / B:フォルダ / C:ファイル / D:差分概要\nE:旧値 / F:新値 / G:リンク / H:project\nI:variant / J:推定原因;
+
+if (--dry-run ?) then (Yes（確認のみ）)
+  :4a. ドライラン実行\nExcel を変更せず\n抽出エントリ一覧を標準出力に表示;
+else (No（本番）)
+  :4b. 本番実行\n同バリアントの既存エントリを削除し\n抽出結果を末尾に追記;
+endif
+
+:5. verify_diff.py で品質ゲート検証\n詳細は README 参照;
+stop
+@enduml

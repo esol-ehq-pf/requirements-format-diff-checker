@@ -1,0 +1,59 @@
+@startuml fig2_internal_workflow
+skinparam defaultFontName "Noto Sans CJK JP"
+skinparam defaultFontSize 11
+skinparam backgroundColor white
+skinparam ArrowColor #333333
+skinparam BoxPadding 10
+skinparam ActivityBorderColor #555555
+skinparam ActivityBackgroundColor #FFFFEE
+skinparam DecisionBackgroundColor #E8F4FF
+skinparam DecisionBorderColor #3399CC
+skinparam StartColor #228B22
+skinparam EndColor #CC2222
+skinparam PartitionBackgroundColor #F0F8FF
+skinparam PartitionBorderColor #336699
+
+start
+:main();
+:入力検証\n旧/新ディレクトリ・xlsx が存在するか確認;
+
+if (パス不在?) then (yes)
+  #salmon:exit=1;
+  stop
+else (ok)
+endif
+
+partition "extract_all(old_dir, new_dir)  —  結果を entries リストに順次追加" {
+  :[1] extract_input_info\ninput_info.txt\n内容差分あり → ツール差分・要件ファイル差分 2件固定出力;
+  :[2] extract_image_diffs\n4種グラフ画像ディレクトリ × PASS/FAIL\n類似度 ≤ 0.7 → ファイル消失\n類似度 > 0.7 → 画像差分（リネーム）;
+  :[3] extract_cpuload_requirements ×2\nbefore/after_cpuload_requirements.csv;
+  :[4] extract_requirements_csv ×2\nbefore/after_requirements.csv;
+  :[5] extract_budget_csv\nbefore_budget.csv;
+  :[6] extract_input_data_csv ×2\ninput_data_ba.csv / input_data_igr.csv;
+  :[7] extract_tsync_csv ×2\nbefore/after_csv_data_tsync_PlusBA.csv;
+  :[8] extract_processing_time_result\nprocessing_time_result.csv;
+  :[9] extract_schedule_result\nschedule_result.csv;
+  :[10] extract_schedule_fail_list\nschedule_result_fail_list.csv;
+}
+
+:検出率を集計\n（差分ありファイル数 vs エントリ生成数）;
+
+if (undetected ≥ 1件?) then (yes)
+  #salmon:検出率・未検出ファイルを表示\nロジック更新推奨メッセージを出力;
+  :exit=2（FATAL）;
+  stop
+else (no)
+endif
+
+:write_to_excel\n(xlsx, project, variant, entries, dry_run);
+
+if (dry_run?) then (True)
+  :抽出結果を標準出力に表示;
+else (False)
+  :既存エントリ削除\n→ 末尾に追記\n→ xlsx 保存;
+endif
+
+:検出率を表示\n例: 検出率: 15/15 (100%);
+:exit=0;
+stop
+@enduml
