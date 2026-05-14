@@ -1,0 +1,256 @@
+{
+  "tool": {
+    "name": "extract_and_write_diff",
+    "script": "scripts/extract_and_write_diff.py",
+    "description": "旧解析結果フォルダと新解析結果フォルダを比較し、差分エントリを自動抽出してExcel『Output差分』シートに転記するツール"
+  },
+
+  "requirements": {
+    "RQ-1": "旧解析結果ディレクトリと新解析結果ディレクトリを入力として受け取ること",
+    "RQ-2": "プロジェクト名・バリアント名を引数で指定できること",
+    "RQ-3": "対象Excelファイルのパスを引数で指定できること",
+    "RQ-4": "Excelへの書き込みを行わずに抽出結果のみ確認できるdry-runモードを持つこと",
+    "RQ-5": "既存の同プロジェクト・同バリアントのエントリを削除したうえで新しいエントリで上書きすること",
+    "RQ-6": "ファイルが存在しない場合はそのファイルの差分抽出をスキップし、エラー終了しないこと",
+    "RQ-7": "旧新で内容が同一のファイルは差分なしとして処理をスキップすること",
+    "RQ-8": "Excelの列構成（A〜J列）に準拠して書き込むこと",
+    "RQ-9": "No列（A列）は既存エントリの最大値の続番で採番すること"
+  },
+
+  "cli": {
+    "command": "python3 scripts/extract_and_write_diff.py",
+    "arguments": {
+      "--project": {
+        "required": true,
+        "type": "string",
+        "description": "プロジェクト名（例: ver1, ver2, ver2.1）"
+      },
+      "--variant": {
+        "required": true,
+        "type": "string",
+        "description": "バリアント名（例: m02, b01, m01）"
+      },
+      "--old": {
+        "required": true,
+        "type": "path",
+        "description": "旧解析結果ディレクトリ（②過去解析済み結果）"
+      },
+      "--new": {
+        "required": true,
+        "type": "path",
+        "description": "新解析結果ディレクトリ（①ver3ツール再解析結果）"
+      },
+      "--xlsx": {
+        "required": true,
+        "type": "path",
+        "description": "出力対象ExcelファイルのパスOutput差分シートを持つファイル）"
+      },
+      "--dry-run": {
+        "required": false,
+        "type": "flag",
+        "description": "指定するとExcelに書き込まず、抽出結果のみ標準出力に表示する"
+      }
+    },
+    "exit_codes": {
+      "0": "正常終了",
+      "1": "入力パスが存在しない場合"
+    }
+  },
+
+  "excel_output": {
+    "sheet": "Output差分",
+    "columns": {
+      "A": "No（連番、既存最大値+1から続番）",
+      "B": "フォルダ（ルート直下の場合は '-'、temp配下は 'tmp'）",
+      "C": "ファイル名（拡張子なし可、画像ファイルは拡張子あり）",
+      "D": "差分概要",
+      "E": "過去ツール/フォーマット値（旧値）",
+      "F": "ver3ツール/フォーマット値（新値）",
+      "G": "画像リンクテキスト（固定値）",
+      "H": "プロジェクト名",
+      "I": "バリアント名",
+      "J": "推定原因"
+    },
+    "overwrite_rule": "同プロジェクト・同バリアントの既存行を全削除後、末尾に追記"
+  },
+
+  "extraction_rules": {
+    "input_info_txt": {
+      "file": "input_info.txt",
+      "folder": "-",
+      "condition": "旧新で内容が異なる場合",
+      "output_entries": [
+        {
+          "diff_type": "入力ファイルの差分",
+          "new_val": "要件チェックツール差分",
+          "cause": "ver3ツールを用いたことによる差分"
+        },
+        {
+          "diff_type": "入力ファイルの差分",
+          "new_val": "要件ファイル差分",
+          "cause": "ver3フォーマットを使用した要件ファイルに置き換わったことによる差分"
+        }
+      ]
+    },
+    "image_diffs": {
+      "target_dirs": [
+        "processing_load_duration_graph",
+        "Sequence_duration_graph",
+        "SWC_budget_duration_graph",
+        "WakeupInterval_graph"
+      ],
+      "sub_dirs": ["PASS", "FAIL"],
+      "detection": {
+        "file_lost": {
+          "condition": "旧に存在し新に存在しないファイル、かつ名前類似度0.7以上の追加候補がない場合",
+          "diff_type": "ファイル消失"
+        },
+        "image_diff": {
+          "condition": "旧に存在し新に存在しないファイルと追加ファイルの名前類似度が0.7以上のペアが存在する場合",
+          "diff_type": "画像差分",
+          "new_val_format": "タイトル{新ファイルstem}に変化"
+        }
+      }
+    },
+    "cpuload_requirements_csv": {
+      "files": ["before_cpuload_requirements.csv", "after_cpuload_requirements.csv"],
+      "folder": "temp",
+      "excel_folder": "tmp",
+      "detection": {
+        "task_id_added": {
+          "condition": "新CSVにのみ存在するNodeName/DisplayNameに 'PF_window' を含む行がある場合",
+          "diff_type": "TaskIDの追加",
+          "new_val": "PF_window が追加"
+        },
+        "node_name_changed": {
+          "condition": "TaskIDをキーとして旧新のNodeNameが異なる行がある場合",
+          "diff_type": "NodeNameの変化",
+          "old_val": "旧NodeName",
+          "new_val": "新NodeName",
+          "dedup": "ユニークペアのみ出力"
+        }
+      }
+    },
+    "requirements_csv": {
+      "files": ["before_requirements.csv", "after_requirements.csv"],
+      "folder": "temp",
+      "excel_folder": "tmp",
+      "detection": {
+        "key_added": {
+          "condition": "新CSVに旧CSVにない列が追加されている場合",
+          "diff_type": "キーの追加",
+          "new_val": "RequirementType: Fsync に対して Targetキーが追加"
+        },
+        "sequence_changed": {
+          "condition": "Sequence/Sender/Receiver/FirstTask/SecondTask列のいずれかに変化がある場合",
+          "diff_type": "Sequence/Sender/Receiver/FirstTask/SecondTaskの変化",
+          "old_val": "chksimymlに記載のSequence/Sender/Receiver/FirstTask/SecondTask名",
+          "new_val": "SWC名/Node名に統一"
+        },
+        "requirement_id_changed": {
+          "condition": "RequirementId（またはRequirementID）列が行単位で変化している場合",
+          "diff_type": "RequirementIdの変化",
+          "new_val_format": "{新ID}に変化",
+          "dedup": "ユニークペアのみ出力"
+        },
+        "requirement_owner_changed": {
+          "condition": "RequirementOwner列が行単位で変化している場合",
+          "diff_type": "RequirementOwnerの変化",
+          "dedup": "ユニークペアのみ出力"
+        }
+      }
+    },
+    "budget_csv": {
+      "files": ["before_budget.csv"],
+      "folder": "temp",
+      "excel_folder": "tmp",
+      "detection": {
+        "task_list_changed": {
+          "condition": "旧新で内容が異なる場合（内容詳細不問）",
+          "diff_type": "TaskListの変化",
+          "old_val": "budget.yamlに記載のTaskList",
+          "new_val": "TaskListがNode名で統一"
+        }
+      }
+    },
+    "input_data_csv": {
+      "files": ["input_data_ba.csv", "input_data_igr.csv"],
+      "folder": "-",
+      "detection": {
+        "pf_1ms_lost": {
+          "condition": "旧CSVにnode=pf_1ms_base/pf_1ms_midが存在し、新CSVに0行の場合",
+          "diff_type": "pf_1ms_base行の消失 または pf_1ms_mid行の消失"
+        },
+        "node_reorder": {
+          "condition": "pf_1ms行を除外後、同一start_clock_msでnode列が異なる行が1件以上ある場合",
+          "diff_type": "Nodeの順序入れ替わり",
+          "new_val_format": "start_clock_msが同じnodeに対して，順序が入れ替わるケースあり({件数}件)"
+        }
+      }
+    },
+    "tsync_csv": {
+      "files": ["before_csv_data_tsync_PlusBA.csv", "after_csv_data_tsync_PlusBA.csv"],
+      "folder": "temp",
+      "excel_folder": "tmp",
+      "detection": {
+        "pf_1ms_lost": {
+          "condition": "旧に存在し新に0行の場合",
+          "diff_type": "pf_1ms_base行の消失 または pf_1ms_mid行の消失"
+        },
+        "mid_time_changed": {
+          "condition": "pf_1msを除いた行に replace差分がある場合",
+          "diff_type": "mid行の時刻値変化",
+          "new_val": "mid 行の tsync 補正時刻値が変化"
+        }
+      }
+    },
+    "processing_time_result_csv": {
+      "file": "processing_time_result.csv",
+      "folder": "-",
+      "detection": {
+        "pf_window_added": {
+          "condition": "新CSVにのみ存在する行に 'PF_window' を含む場合",
+          "diff_type": "TaskIDの追加",
+          "new_val": "PF_windowが追加"
+        }
+      }
+    },
+    "schedule_result_csv": {
+      "file": "schedule_result.csv",
+      "folder": "-",
+      "detection": {
+        "id_name_changed": {
+          "condition": "id列またはname列が行単位で変化している場合",
+          "diff_type": "id/nameの変化",
+          "dedup": "末尾の'-NN'を除いた親名称が同じペアは1件に集約",
+          "cause_first_only": true
+        },
+        "etc_changed": {
+          "condition": "etc列が行単位で変化している場合",
+          "diff_type": "etcの変化",
+          "old_val": "chksimymlに記載のNode名称",
+          "new_val": "SWC名/Node名に統一"
+        }
+      }
+    },
+    "schedule_result_fail_list_csv": {
+      "file": "schedule_result_fail_list.csv",
+      "folder": "-",
+      "detection": {
+        "header_changed": {
+          "condition": "1行目または2行目（サブヘッダ）が変化している場合",
+          "diff_type": "列ヘッダの変化",
+          "old_val": "chksimymlに記載のNode名称",
+          "new_val": "SWC名/Node名に統一"
+        }
+      }
+    }
+  },
+
+  "constants": {
+    "LINK_TEXT": "過去プロジェクト(ver1/ver2/ver2.1)の 要件ファイルフォーマット変更",
+    "SHEET_NAME": "Output差分",
+    "image_similarity_threshold": 0.7,
+    "excel_data_start_row": 4
+  }
+}
