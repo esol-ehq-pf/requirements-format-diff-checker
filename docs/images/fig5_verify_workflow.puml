@@ -1,0 +1,56 @@
+@startuml fig5_verify_workflow
+skinparam defaultFontName "Noto Sans CJK JP"
+skinparam defaultFontSize 11
+skinparam backgroundColor white
+skinparam ArrowColor #333333
+skinparam ActivityBorderColor #555555
+skinparam ActivityBackgroundColor #FFFFEE
+skinparam DecisionBackgroundColor #E8F4FF
+skinparam DecisionBorderColor #3399CC
+skinparam StartColor #228B22
+skinparam EndColor #CC2222
+skinparam PartitionBackgroundColor #F0F8FF
+skinparam PartitionBorderColor #336699
+
+start
+:main();
+:CLI 引数解析\n--project / --variant / --old / --new / --xlsx\n[--report-out] [--plan];
+
+if (引数バリデーション\n--old/--new がディレクトリ\n--xlsx が .xlsx ファイル?) then (NG)
+  #salmon:exit=2（argparse error）;
+  stop
+else (OK)
+endif
+
+:load_excel_entries()\nOutput差分シート 4行目以降を読み込み\nproject列・variant列で絞り込み → entries;
+
+partition "検証フェーズ（全5フェーズを順次実行）" {
+  :Phase 1: phase1_file_inventory()\n16対象ファイルのバイト比較\n→ 差分あり/なし分類\n→ Excel 網羅性・偽陽性チェック;
+
+  :Phase 2: phase2_csv_diffs()\n差分なし期待ファイルの誤エントリ確認\n主要7CSV の差分種別自動検出;
+
+  :Phase 3: phase3_image_diffs()\n4種グラフ画像ディレクトリ × PASS/FAIL\n削除/リネームの Excel 記録確認;
+
+  :Phase 4: phase4_entry_accuracy()\n全エントリの差分概要文言チェック\nフォルダ/ファイル実在確認;
+
+  :Phase 5: phase5_meta_consistency()\nproject列・variant列・link列の整合性確認;
+}
+
+:evaluate_quality_gates()\nQG-1〜QG-4 の PASS/FAIL 判定\n総合判定 overall;
+
+:YAML レポートを report_out に書き出し;
+
+if (plan_path が存在する?) then (Yes)
+  :review_plan.yaml の execution_status を更新;
+else (No)
+endif
+
+:品質ゲート結果・総合判定を標準出力に表示;
+
+if (overall == PASS?) then (PASS)
+  :exit=0;
+else (FAIL)
+  :exit=1;
+endif
+stop
+@enduml

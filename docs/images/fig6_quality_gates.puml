@@ -1,0 +1,37 @@
+@startuml fig6_quality_gates
+skinparam defaultFontName "Noto Sans CJK JP"
+skinparam defaultFontSize 12
+skinparam backgroundColor white
+skinparam ArrowColor #333333
+skinparam PackageBorderColor #336699
+skinparam PackageBackgroundColor #F0F8FF
+skinparam NoteBackgroundColor #FFFACD
+skinparam NoteBorderColor #CCAA00
+
+rectangle "QG-1: 網羅性" as QG1 #E8F4FF {
+  rectangle "Phase 1\nファイルインベントリ確認\n──────────────\n16ファイル全てをバイト比較\n差分あり → Excel 記載済みか？\n差分なし → Excel に誤記載なしか？" as P1
+  rectangle "Phase 2\nCSV 差分内容確認\n──────────────\n差分なし期待3ファイルの\n誤エントリ確認\n主要7CSV の差分種別検出" as P2
+  rectangle "Phase 3\n画像差分確認\n──────────────\n4ディレクトリ × PASS/FAIL\n削除/リネームが\nExcel に記録済みか？" as P3
+  P1 -right-> P2
+  P2 -right-> P3
+}
+
+rectangle "QG-2: 正確性" as QG2 #E8FFE8 {
+  rectangle "Phase 4\nエントリ正確性確認\n──────────────\n差分概要文言が\nALLOWED_DIFF_TYPES に含まれるか？\nフォルダ/ファイルが旧or新に実在するか？" as P4
+}
+
+rectangle "QG-3: 推定原因形式" as QG3 #FFFFF0 {
+  rectangle "（自動判定対象外）\n常に PASS" as P3_skip
+}
+
+rectangle "QG-4: メタ整合性" as QG4 #FFE8E8 {
+  rectangle "Phase 5\nメタ整合性確認\n──────────────\nproject列・variant列・link列が\n全エントリで一致するか？" as P5
+}
+
+rectangle "総合判定\nQG-1, QG-2, QG-4 が全て PASS → PASS\n（QG-3 は除外）" as OVERALL #F5F5F5
+
+QG1 -down-> OVERALL
+QG2 -down-> OVERALL
+QG3 -down-> OVERALL
+QG4 -down-> OVERALL
+@enduml

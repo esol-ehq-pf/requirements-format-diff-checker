@@ -1,0 +1,442 @@
+= verify_diff.py 詳細マニュアル
+:toc: left
+:toc-title: 目次
+:toclevels: 3
+:sectnums:
+:icons: font
+:imagesdir: images
+:source-highlighter: rouge
+:doctype: article
+:lang: ja
+
+== 概要
+
+Excel の『Output 差分』シートに記録された差分エントリを自動検証し、 +
+品質ゲート（QG）の総合判定を YAML レポートに出力するツールです。
+
+`extract_and_write_diff.py` の出力結果を検証する品質保証ツールとして位置づけられており、 +
+手動記入後の検証にも利用できます。
+
+---
+
+== 使い方（CLI リファレンス）
+
+[source,bash]
+----
+python3 scripts/verify_diff.py \
+    --project <プロジェクト名> \
+    --variant <バリアント名> \
+    --old     <旧解析結果ディレクトリ> \
+    --new     <新解析結果ディレクトリ> \
+    --xlsx    <Excelファイルパス> \
+    [--report-out <レポート出力パス>] \
+    [--plan <レビュー計画YAMLパス>]
+----
+
+=== 引数
+
+[cols="2,1,4,3", options="header"]
+|===
+| 引数 | 必須 | 説明 | 例
+
+| `--project`
+| ✅
+| プロジェクト名
+| `ver1`, `ver2`, `ver2.1`
+
+| `--variant`
+| ✅
+| バリアント名
+| `m02`, `b01`, `m01`
+
+| `--old`
+| ✅
+| 旧（過去解析済み）結果ディレクトリのパス +
+  ※ディレクトリが存在しない場合は exit=2
+| `input/scheduling_requirement_check_analysis_result`
+
+| `--new`
+| ✅
+| 新（ver3 再解析）結果ディレクトリのパス +
+  ※ディレクトリが存在しない場合は exit=2
+| `input/ver1_m02_AP_再解析結果/output`
+
+| `--xlsx`
+| ✅
+| Output 差分シートを含む Excel ファイルパス +
+  ※ファイル不在または非 `.xlsx` の場合は exit=2
+| `input/過去プロジェクト(...).xlsx`
+
+| `--report-out`
+| ➖
+| 検証レポートの出力先 YAML パス +
+  省略時: `test/verify_report_{variant}.yaml`
+| `test/verify_report_m02.yaml`
+
+| `--plan`
+| ➖
+| レビュー計画 YAML パス +
+  省略時: `test/review_plan_{variant}.yaml` +
+  ファイルが存在しない場合はスキップ
+| `test/review_plan_m02.yaml`
+|===
+
+=== 終了コード
+
+[cols="1,4", options="header"]
+|===
+| コード | 意味
+
+| `0`
+| 全 QG PASS（正常終了）
+
+| `1`
+| いずれかの QG が FAIL
+
+| `2`
+| CLI バリデーションエラー（argparse が自動発行: --old/--new が非ディレクトリ、--xlsx が非存在または非 .xlsx 等）
+|===
+
+=== 実行例
+
+[source,bash]
+----
+BASE=work/format-change
+
+python3 "$BASE/scripts/verify_diff.py" \
+    --project ver1 \
+    --variant m02 \
+    --old  "$BASE/input/scheduling_requirement_check_analysis_result" \
+    --new  "$BASE/input/ver1_m02_AP_再解析結果/output" \
+    --xlsx "$BASE/input/過去プロジェクト(ver1_ver2_ver2.1)の要件ファイルフォーマット変更.xlsx"
+----
+
+=== 標準出力例
+
+[source]
+----
+=== ver1 m02 セルフレビュー開始 ===
+Excelエントリ読み込み: 33 件
+Phase 1: ファイルインベントリ確認...
+Phase 2: CSV差分確認...
+Phase 3: 画像ファイル差分確認...
+Phase 4: Excelエントリ正確性確認...
+Phase 5: メタ整合性確認...
+
+=== 品質ゲート結果 ===
+  ✅ QG-1: PASS
+  ✅ QG-2: PASS
+  ✅ QG-3: PASS
+  ✅ QG-4: PASS
+
+  総合判定: ✅ PASS
+
+レポート出力: test/verify_report_m02.yaml
+----
+
+---
+
+== 内部処理ワークフロー
+
+image::fig5_verify_workflow.png[内部処理ワークフロー,align="center"]
+
+---
+
+== 品質ゲート構成
+
+image::fig6_quality_gates.png[品質ゲート構成,align="center"]
+
+[cols="1,2,3,3", options="header"]
+|===
+| QG | 名称 | 対応フェーズ | 判定条件
+
+| QG-1
+| 網羅性
+| Phase 1 + Phase 2 + Phase 3
+| 差分ありファイルが全て Excel に記載され、差分なしファイルが誤記載されておらず、未記録の画像差分もないこと
+
+| QG-2
+| 正確性
+| Phase 4
+| 全エントリの差分概要文言が許容リストに含まれ、フォルダ/ファイルが旧または新ディレクトリに実在すること
+
+| QG-3
+| 推定原因形式
+| なし
+| 常に PASS（自動判定対象外）
+
+| QG-4
+| メタ整合性
+| Phase 5
+| 全エントリの project 列・variant 列・link 列が引数値と一致すること
+|===
+
+NOTE: 総合判定は QG-1, QG-2, QG-4 が全て PASS の場合のみ PASS（QG-3 は除外）。
+
+---
+
+== フェーズ詳細
+
+=== Phase 1: ファイルインベントリ確認（`phase1_file_inventory()`）
+
+16 の対象ファイルを `read_bytes()` バイト比較し、差分あり/なしを分類したうえで以下を確認します。
+
+**確認内容:**
+
+. 差分ありファイルが全て Excel に少なくとも 1 エントリ記載されているか（網羅性チェック）
+. 差分なしファイルが Excel に誤記載されていないか（偽陽性チェック）
+
+**対象ファイル一覧:**
+
+[cols="1,2", options="header"]
+|===
+| 分類 | ファイルパス（旧/新ディレクトリ相対）
+
+| ルート
+| `input_info.txt`
+
+| ルート
+| `schedule_result.csv`
+
+| ルート
+| `schedule_result_fail_list.csv`
+
+| ルート
+| `processing_time_result.csv`
+
+| ルート
+| `processing_time_SWC_group_result.csv`
+
+| ルート
+| `node_straddling_slot_pickup_result.csv`
+
+| ルート
+| `input_data_ba.csv`
+
+| ルート
+| `input_data_igr.csv`
+
+| temp/
+| `temp/before_requirements.csv`
+
+| temp/
+| `temp/after_requirements.csv`
+
+| temp/
+| `temp/before_cpuload_requirements.csv`
+
+| temp/
+| `temp/after_cpuload_requirements.csv`
+
+| temp/
+| `temp/before_budget.csv`
+
+| temp/
+| `temp/after_budget.csv`
+
+| temp/
+| `temp/before_csv_data_tsync_PlusBA.csv`
+
+| temp/
+| `temp/after_csv_data_tsync_PlusBA.csv`
+|===
+
+**NG 条件:** 差分ありファイルが Excel 未記載、または差分なしファイルが Excel に誤記載されている
+
+---
+
+=== Phase 2: CSV 差分内容確認（`phase2_csv_diffs()`）
+
+**差分なし期待ファイルの誤エントリ確認（3ファイル）:**
+
+以下のファイルは ver1/m02 において差分が発生しないと確認済みです。 +
+Excel にこれらのエントリが存在する場合は NG とします。
+
+* `processing_time_SWC_group_result.csv`
+* `node_straddling_slot_pickup_result.csv`
+* `temp/after_budget.csv`
+
+**主要 CSV の差分種別自動検出（7ファイル）:**
+
+[cols="2,3,2", options="header"]
+|===
+| ファイル | 検出チェック | 判定ロジック
+
+| `input_data_ba.csv`
+| pf_1ms_base 消失 / pf_1ms_mid 消失 / Node の順序入れ替わり
+| deleted_samples に当該文字列が含まれるか / changed_count > 0
+
+| `input_data_igr.csv`
+| pf_1ms_base 消失 / pf_1ms_mid 消失 / Node の順序入れ替わり
+| 同上
+
+| `processing_time_result.csv`
+| PF_window 追加
+| added_samples に "PF_window" が含まれるか
+
+| `schedule_result.csv`
+| VidDraw→viddraw 変化
+| changed_samples に当該変化が含まれるか、または changed_count > 0
+
+| `temp/before_cpuload_requirements.csv`
+| PF_window 追加 / NodeName 変化
+| added_samples に "PF_window" / changed_count > 0
+
+| `temp/after_cpuload_requirements.csv`
+| PF_window 追加
+| added_samples に "PF_window" が含まれるか
+
+| `temp/before_budget.csv`
+| TaskList 変化
+| changed_count > 0
+|===
+
+NOTE: Phase 2 の CSV 差分検出は ver1/m02 で観測されたパターンを元にしています。 +
+他バリアントでパターンが異なる場合は false negative（NG 検出漏れ）が発生しうる点に注意してください。 +
+**メインゲートは Phase 1（ファイル網羅性）** であり、Phase 2 はその補助的確認です。
+
+---
+
+=== Phase 3: 画像差分確認（`phase3_image_diffs()`）
+
+4種グラフ画像ディレクトリ × PASS/FAIL サブフォルダ（計8組）について確認します。
+
+**対象ディレクトリ:**
+
+* `processing_load_duration_graph`
+* `Sequence_duration_graph`
+* `SWC_budget_duration_graph`
+* `WakeupInterval_graph`
+
+**確認内容:**
+
+. 削除された画像ファイル（旧にあり新にない）が Excel に記録されているか
+. リネーム（名前類似度 > 0.7 の削除/追加ペア）が Excel の「画像差分」エントリに記録されているか
+
+**NG 条件:** 未記録の削除画像またはリネームが 1 件以上存在する
+
+---
+
+=== Phase 4: エントリ正確性確認（`phase4_entry_accuracy()`）
+
+全 Excel エントリに対して 2 つのチェックを行います。
+
+**チェック 1: 差分概要文言チェック**
+
+`diff_type` 列の値が `ALLOWED_DIFF_TYPES` に含まれることを確認します。
+
+許容される差分概要文言一覧:
+
+[cols="1", options="header"]
+|===
+| 許容文言
+
+| `入力ファイルの差分`
+| `ファイル消失`
+| `画像差分`
+| `NodeNameの変化`
+| `id/nameの変化`
+| `RequirementIdの変化`
+| `RequirementOwnerの変化`
+| `Sequence/Sender/Receiver/FirstTask/SecondTaskの変化`
+| `キーの追加`
+| `TaskIDの追加`
+| `TaskListの変化`
+| `列ヘッダの変化`
+| `pf_1ms_base行の消失`
+| `pf_1ms_mid行の消失`
+| `Nodeの順序入れ替わり`
+| `etcの変化`
+| `mid行の時刻値変化`
+|===
+
+**チェック 2: ファイル実在確認**
+
+フォルダ列 + ファイル列の組み合わせが旧または新ディレクトリのいずれかに実在することを確認します。
+
+正規化ルール:
+
+* Excel の `tmp` フォルダ値 → 実ディレクトリ `temp` として解釈
+* ファイル名に拡張子がない場合 → `.csv` を補完して確認
+* グラフ画像の場合 → `PASS/` または `FAIL/` サブフォルダも探索
+
+**NG 条件:** 許容外の差分概要文言、またはフォルダ/ファイルが旧新どちらにも存在しない
+
+---
+
+=== Phase 5: メタ整合性確認（`phase5_meta_consistency()`）
+
+全 Excel エントリについて以下の 3 列を確認します。
+
+[cols="2,3", options="header"]
+|===
+| 列 | 確認内容
+
+| H 列（project）
+| `--project` 引数値と一致すること
+
+| I 列（variant）
+| `--variant` 引数値と一致すること
+
+| G 列（link）
+| 固定値 `過去プロジェクト(ver1/ver2/ver2.1)の 要件ファイルフォーマット変更` と一致すること
+|===
+
+**NG 条件:** 1 件でも不一致が存在する
+
+---
+
+== 出力ファイル
+
+=== 検証レポート YAML（`test/verify_report_{variant}.yaml`）
+
+[cols="2,4", options="header"]
+|===
+| セクション | 内容
+
+| `meta`
+| 実行日 / エントリ件数 / project / variant
+
+| `quality_gates`
+| QG-1〜QG-4 の PASS/FAIL
+
+| `overall`
+| 総合判定（PASS/FAIL）
+
+| `phase1_file_inventory`
+| 差分あり/なしファイルリスト・未記録ファイルリスト
+
+| `phase2_csv_diffs`
+| 差分なし期待ファイルの誤エントリ・各 CSV の差分検出結果
+
+| `phase3_image_diffs`
+| 各画像ディレクトリの削除/リネーム・未記録リスト
+
+| `phase4_entry_accuracy`
+| 全エントリの文言チェック・実在確認結果
+
+| `phase5_meta_consistency`
+| 不整合エントリリスト
+|===
+
+=== レビュー計画 YAML の更新（`test/review_plan_{variant}.yaml`）
+
+ファイルが存在する場合のみ、以下の項目を現在の実行結果で上書き更新します。
+
+* `execution_status.executed_date`
+* `execution_status.gate_results`
+* `execution_status.overall`
+
+---
+
+== 注意事項
+
+* Phase 2 の CSV 差分検出は **ver1/m02 で観測されたパターンが前提**です。 +
+  他バリアントで異なるパターンが含まれる場合、Phase 2 の個別 CSV チェックで NG を誤報告する可能性があります。 +
+  **メインゲートは Phase 1**（ファイル単位のバイト比較・網羅性確認）であり、Phase 2 はその補助的確認です。
+
+* Excel ファイルへのアクセスは `openpyxl` が使用するため、Excel を開いたまま実行しないでください。
+
+* `--report-out` で指定したディレクトリが存在しない場合は自動的に作成されます。
+
+* `--plan` で指定したファイルが存在しない場合はスキップ（エラーなし）となります。
