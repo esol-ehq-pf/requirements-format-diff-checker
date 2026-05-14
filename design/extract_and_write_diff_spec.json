@@ -4,7 +4,6 @@
     "script": "scripts/extract_and_write_diff.py",
     "description": "旧解析結果フォルダと新解析結果フォルダを比較し、差分エントリを自動抽出してExcel『Output差分』シートに転記するツール"
   },
-
   "context": {
     "purpose": "過去プロジェクト（ver1/ver2/ver2.1）の要件ファイルフォーマットを ver3 相当に統一するにあたり、①ver3ツール再解析結果と②過去解析済み結果の同等性を確認し、フォーマット変更可否を判断する根拠を整理すること",
     "input_definition": {
@@ -14,19 +13,53 @@
     "output_destination": "添付Excelファイル『Output差分』シートに全バリアントの差分を記入する",
     "customer_judgment": "差分の許容可否（『差分許容できるか』列）は顧客側で判断する。ツールは差分の抽出・記録のみを担う"
   },
-
   "target_variants": [
-    { "project": "ver1",  "variant": "m02", "status": "完了" },
-    { "project": "ver1",  "variant": "b01", "status": "顧客提供待ち" },
-    { "project": "ver1",  "variant": "m01", "status": "顧客提供待ち" },
-    { "project": "ver2",  "variant": "b01", "status": "顧客提供待ち" },
-    { "project": "ver2",  "variant": "m01", "status": "顧客提供待ち" },
-    { "project": "ver2",  "variant": "m02", "status": "顧客提供待ち" },
-    { "project": "ver2.1", "variant": "b01", "status": "顧客提供待ち" },
-    { "project": "ver2.1", "variant": "m01", "status": "顧客提供待ち" },
-    { "project": "ver2.1", "variant": "m02", "status": "顧客提供待ち" }
+    {
+      "project": "ver1",
+      "variant": "m02",
+      "status": "完了"
+    },
+    {
+      "project": "ver1",
+      "variant": "b01",
+      "status": "顧客提供待ち"
+    },
+    {
+      "project": "ver1",
+      "variant": "m01",
+      "status": "顧客提供待ち"
+    },
+    {
+      "project": "ver2",
+      "variant": "b01",
+      "status": "顧客提供待ち"
+    },
+    {
+      "project": "ver2",
+      "variant": "m01",
+      "status": "顧客提供待ち"
+    },
+    {
+      "project": "ver2",
+      "variant": "m02",
+      "status": "顧客提供待ち"
+    },
+    {
+      "project": "ver2.1",
+      "variant": "b01",
+      "status": "顧客提供待ち"
+    },
+    {
+      "project": "ver2.1",
+      "variant": "m01",
+      "status": "顧客提供待ち"
+    },
+    {
+      "project": "ver2.1",
+      "variant": "m02",
+      "status": "顧客提供待ち"
+    }
   ],
-
   "requirements": {
     "RQ-1": "旧解析結果ディレクトリと新解析結果ディレクトリを入力として受け取ること",
     "RQ-2": "プロジェクト名・バリアント名を引数で指定できること",
@@ -40,7 +73,6 @@
     "RQ-10": "--old 引数は②過去解析済み結果、--new 引数は①ver3ツール再解析結果として扱うこと",
     "RQ-11": "ver1/ver2/ver2.1 × b01/m01/m02 の全9バリアントに対応できること（ファイル不在はスキップ）"
   },
-
   "cli": {
     "command": "python3 scripts/extract_and_write_diff.py",
     "arguments": {
@@ -77,9 +109,9 @@
       "--csv-out": {
         "required": false,
         "type": "optional_string",
-        "default_when_omitted": null,
-        "default_filename": "diff_output.csv",
-        "description": "指定するとExcelへの書き込みを行わず差分エントリをCSVファイルに出力する。ファイル名を値として与えた場合（例: --csv-out result.csv）はそのパスに出力する。値なしで指定した場合（--csv-out のみ）はカレントディレクトリに diff_output.csv として出力する。--dry-run との同時指定は不可（--csv-out が優先され警告を出力する）"
+        "default_when_omitted": "機能無効（CSV出力しない）",
+        "description": "指定するとExcelへの書き込みを行わず差分エントリをCSVファイルに出力する。ファイル名を値として与えた場合（例: --csv-out result.csv）はそのパスに出力する。値なしで指定した場合（--csv-out のみ）はカレントディレクトリに diff_output.csv として出力する。--dry-run との同時指定は不可（--csv-out が優先され警告を出力する）",
+        "default_when_csv_out_flag_only": "diff_output.csv（カレントディレクトリ）"
       }
     },
     "exit_codes": {
@@ -88,10 +120,20 @@
       "2": "未検出パターン検知: 差分ありファイルが存在するにもかかわらずエントリが0件のファイルが1件以上あった場合（FATAL終了）"
     }
   },
-
   "csv_output": {
     "trigger": "--csv-out オプション指定時",
-    "columns": ["No", "フォルダ", "ファイル", "差分概要", "旧値", "新値", "リンク", "project", "variant", "推定原因"],
+    "columns": [
+      "No",
+      "フォルダ",
+      "ファイル",
+      "差分概要",
+      "旧値",
+      "新値",
+      "リンク",
+      "project",
+      "variant",
+      "推定原因"
+    ],
     "column_mapping": {
       "No": "エントリの連番（1始まり）",
       "フォルダ": "entry['folder']",
@@ -106,9 +148,10 @@
     },
     "encoding": "utf-8-sig（Excel で文字化けしないよう BOM 付き）",
     "excel_write": "行わない（排他）",
-    "dry_run_conflict": "--dry-run と同時指定した場合は --csv-out を優先し、'警告: --dry-run と --csv-out が同時指定されました。--csv-out を優先します。' を標準出力に表示する"
+    "dry_run_conflict": "--dry-run と同時指定した場合は --csv-out を優先し、'警告: --dry-run と --csv-out が同時指定されました。--csv-out を優先します。' を標準出力に表示する",
+    "zero_entries_behavior": "エントリ0件のときはヘッダ行のみ出力されるCSVが作成される（行数は0）",
+    "directory_not_found": "出力先ディレクトリが存在しない場合はFileNotFoundErrorで異常終了する。事前にディレクトリを作成しておくこと"
   },
-
   "excel_output": {
     "sheet": "Output差分",
     "columns": {
@@ -132,7 +175,6 @@
       "note_ghost_row": "A列の =A{n}+1 数式は delete_rows() で行を削除しても残存することがある。step2 でこれを除去しないと get_last_data_row() が誤った最終行を返し、新エントリが空白行の後に追記されるバグが発生する（BUG-1/BUG-2 として修正済み）"
     }
   },
-
   "detection_guarantee": {
     "summary": "差分の見落とし（サイレント失敗）は構造的に発生しない",
     "scope": "extract_all() が _check() で追跡する差分あり期待ファイルに限定される。差分なし期待の3ファイル（processing_time_SWC_group_result.csv / node_straddling_slot_pickup_result.csv / temp/after_budget.csv）は監視対象外。これらが差分ありでも FATAL にならないが、verify_diff.py の QG-1 phase1 で検知される",
@@ -145,7 +187,6 @@
     "limitation": "抽出できなかった差分の内容は Excel に記録されない。しかし FATAL 終了により必ずオペレーターが気づける",
     "stdout_example": "検出率: 15/15 (100%)  ← 全差分ファイルのエントリ抽出に成功した場合の出力例"
   },
-
   "extraction_rules": {
     "input_info_txt": {
       "file": "input_info.txt",
@@ -173,7 +214,10 @@
         "SWC_budget_duration_graph",
         "WakeupInterval_graph"
       ],
-      "sub_dirs": ["PASS", "FAIL"],
+      "sub_dirs": [
+        "PASS",
+        "FAIL"
+      ],
       "detection": {
         "file_lost": {
           "condition": "旧に存在し新に存在しないファイル、かつ名前類似度0.7以上の追加候補がない場合",
@@ -188,7 +232,10 @@
       }
     },
     "cpuload_requirements_csv": {
-      "files": ["before_cpuload_requirements.csv", "after_cpuload_requirements.csv"],
+      "files": [
+        "before_cpuload_requirements.csv",
+        "after_cpuload_requirements.csv"
+      ],
       "folder": "temp",
       "excel_folder": "tmp",
       "detection": {
@@ -207,7 +254,10 @@
       }
     },
     "requirements_csv": {
-      "files": ["before_requirements.csv", "after_requirements.csv"],
+      "files": [
+        "before_requirements.csv",
+        "after_requirements.csv"
+      ],
       "folder": "temp",
       "excel_folder": "tmp",
       "detection": {
@@ -236,7 +286,9 @@
       }
     },
     "budget_csv": {
-      "files": ["before_budget.csv"],
+      "files": [
+        "before_budget.csv"
+      ],
       "folder": "temp",
       "excel_folder": "tmp",
       "detection": {
@@ -249,7 +301,10 @@
       }
     },
     "input_data_csv": {
-      "files": ["input_data_ba.csv", "input_data_igr.csv"],
+      "files": [
+        "input_data_ba.csv",
+        "input_data_igr.csv"
+      ],
       "folder": "-",
       "detection": {
         "pf_1ms_lost": {
@@ -264,7 +319,10 @@
       }
     },
     "tsync_csv": {
-      "files": ["before_csv_data_tsync_PlusBA.csv", "after_csv_data_tsync_PlusBA.csv"],
+      "files": [
+        "before_csv_data_tsync_PlusBA.csv",
+        "after_csv_data_tsync_PlusBA.csv"
+      ],
       "folder": "temp",
       "excel_folder": "tmp",
       "detection": {
@@ -341,7 +399,6 @@
       }
     }
   },
-
   "constants": {
     "LINK_TEXT": "過去プロジェクト(ver1/ver2/ver2.1)の 要件ファイルフォーマット変更",
     "SHEET_NAME": "Output差分",

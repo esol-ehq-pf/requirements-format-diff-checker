@@ -49,12 +49,24 @@ SAMPLE_ENTRIES = [
 # ─────────────────────────────────────────
 
 def test_csv_out_named_file(tmp_path):
-    """--csv-out result.csv 相当: 指定パスに CSV が作成され件数が返る"""
+    """--csv-out result.csv 相当: 指定パスに CSV が作成され件数が返り、Excel は変更されない"""
+    import openpyxl
     out = tmp_path / "result.csv"
+
+    # Excel ファイルを用意し、書き込み前のサイズを記録
+    xlsx = tmp_path / "dummy.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Output差分"
+    wb.save(xlsx)
+    size_before = xlsx.stat().st_size
+
     count = write_to_csv(out, "ver1", "m02", SAMPLE_ENTRIES)
 
     assert out.exists(), "指定パスに CSV が作成されること"
     assert count == len(SAMPLE_ENTRIES), "戻り値がエントリ件数と一致すること"
+    # write_to_csv は Excel を触らないので xlsx のサイズは変わらない
+    assert xlsx.stat().st_size == size_before, "write_to_csv は Excel を変更しないこと"
 
 
 # ─────────────────────────────────────────
@@ -62,11 +74,40 @@ def test_csv_out_named_file(tmp_path):
 #           write_to_csv 自体は任意パスを受け取れることを確認
 # ─────────────────────────────────────────
 
-def test_csv_out_default_filename(tmp_path):
-    """diff_output.csv というデフォルト名への書き込みが正常動作すること"""
-    out = tmp_path / "diff_output.csv"
-    write_to_csv(out, "ver1", "m02", SAMPLE_ENTRIES)
-    assert out.exists()
+def test_csv_out_default_filename(tmp_path, monkeypatch, capsys):
+    """--csv-out のみ（ファイル名省略）時に const 値 diff_output.csv が使われること"""
+    import openpyxl
+    from extract_and_write_diff import main
+
+    old_dir = tmp_path / "old"
+    new_dir = tmp_path / "new"
+    old_dir.mkdir()
+    new_dir.mkdir()
+    xlsx = tmp_path / "dummy.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Output差分"
+    wb.save(xlsx)
+
+    # --csv-out のみ（値なし）で呼び出す
+    monkeypatch.setattr(
+        sys, "argv",
+        [
+            "extract_and_write_diff.py",
+            "--project", "ver1",
+            "--variant", "m02",
+            "--old", str(old_dir),
+            "--new", str(new_dir),
+            "--xlsx", str(xlsx),
+            "--csv-out",          # 値なし → const="diff_output.csv" が使われる
+        ],
+    )
+    # カレントディレクトリを tmp_path に変更して diff_output.csv の出力先を制御
+    monkeypatch.chdir(tmp_path)
+    main()
+
+    default_csv = tmp_path / "diff_output.csv"
+    assert default_csv.exists(), "ファイル名省略時は diff_output.csv に出力されること"
 
 
 # ─────────────────────────────────────────
