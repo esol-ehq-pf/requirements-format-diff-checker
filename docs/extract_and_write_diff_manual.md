@@ -89,18 +89,18 @@ flowchart TD
     VAL -- "パス不在" --> ERR(["exit=1"])
     VAL -- "OK" --> EXT
 
-    subgraph EXT["extract_all(old_dir, new_dir)"]
+    subgraph EXT["extract_all(old_dir, new_dir)  ─  結果を entries リストに順次追加"]
         direction TB
-        F1["[1] extract_input_info\ninput_info.txt"]
-        F2["[2] extract_image_diffs\nグラフ画像ディレクトリ群"]
-        F3["[3] extract_cpuload_requirements ×2\nbefore/after_cpuload_requirements.csv"]
-        F4["[4] extract_requirements_csv ×2\nbefore/after_requirements.csv"]
-        F5["[5] extract_budget_csv\nbefore_budget.csv"]
-        F6["[6] extract_input_data_csv ×2\ninput_data_ba/igr.csv"]
-        F7["[7] extract_tsync_csv ×2\nbefore/after_csv_data_tsync_PlusBA.csv"]
-        F8["[8] extract_processing_time_result\nprocessing_time_result.csv"]
-        F9["[9] extract_schedule_result\nschedule_result.csv"]
-        F10["[10] extract_schedule_fail_list\nschedule_result_fail_list.csv"]
+        F1["[1] extract_input_info\ninput_info.txt\n内容差分あり → ツール差分・要件ファイル差分\n　　　　　　　2件を固定出力"]
+        F2["[2] extract_image_diffs\n4種グラフ画像ディレクトリ × PASS/FAIL\n類似度 ≤ 0.7 → ファイル消失\n類似度 > 0.7 → 画像差分（リネーム）"]
+        F3["[3] extract_cpuload_requirements ×2\nbefore/after_cpuload_requirements.csv\nPF_window 追加 → TaskID の追加\nNodeName 変化 → NodeName の変化"]
+        F4["[4] extract_requirements_csv ×2\nbefore/after_requirements.csv\nキー追加 → キーの追加\nSeq/Sender/Receiver 等変化 → 各変化エントリ\nRequirementId/Owner 変化 → 各変化エントリ"]
+        F5["[5] extract_budget_csv\nbefore_budget.csv\n内容差分あり → TaskList の変化（1件固定出力）"]
+        F6["[6] extract_input_data_csv ×2\ninput_data_ba.csv / input_data_igr.csv\npf_1ms_base/mid 行消失 → 行の消失\nNode 順序入れ替わり → Node の順序入れ替わり（N 件）"]
+        F7["[7] extract_tsync_csv ×2\nbefore/after_csv_data_tsync_PlusBA.csv\npf_1ms_base/mid 行消失 → 行の消失\npf_1ms 以外の変化 → mid 行の時刻値変化"]
+        F8["[8] extract_processing_time_result\nprocessing_time_result.csv\nPF_window 行追加 → TaskID の追加"]
+        F9["[9] extract_schedule_result\nschedule_result.csv\nid/name 変化 → id/name の変化（末尾 -NN を統合）\netc 変化 → etc の変化"]
+        F10["[10] extract_schedule_fail_list\nschedule_result_fail_list.csv\nヘッダ行変化 → 列ヘッダの変化"]
         F1 --> F2 --> F3 --> F4 --> F5 --> F6 --> F7 --> F8 --> F9 --> F10
     end
 
