@@ -1,0 +1,168 @@
+meta:
+  reviewed_date: "2026-05-14"
+  reviewer: "GitHub Copilot"
+  review_target:
+    - scripts/extract_and_write_diff.py
+    - scripts/verify_diff.py
+  spec_files:
+    - design/extract_and_write_diff_spec.json
+    - design/verify_diff_spec.json
+
+# ============================================================
+# extract_and_write_diff.py レビュー結果
+# ============================================================
+extract_and_write_diff:
+  overall: PASS
+
+  requirements:
+    RQ-1:
+      status: PASS
+      evidence: "argparse で --old / --new を Path() に変換して受け取る"
+    RQ-2:
+      status: PASS
+      evidence: "argparse で --project / --variant を必須引数として定義"
+    RQ-3:
+      status: PASS
+      evidence: "argparse で --xlsx を必須引数として定義"
+    RQ-4:
+      status: PASS
+      evidence: "--dry-run フラグで Excel 書き込みをスキップし標準出力のみ"
+    RQ-5:
+      status: PASS
+      evidence: "write_to_excel() 内で同プロジェクト/バリアントの行を逆順に delete_rows() した後に追記"
+    RQ-6:
+      status: PASS
+      evidence: "各 extract_* 関数の冒頭で old_path.exists() / new_path.exists() を確認しスキップ"
+    RQ-7:
+      status: PASS
+      note: "大半の関数は old_path.read_bytes() == new_path.read_bytes() でスキップ。
+             extract_processing_time_result のみバイト比較なし（差分ロジック自体がPF_window追加のみ
+             検出するため実質問題なし。ただし仕様との軽微な乖離）"
+    RQ-8:
+      status: PASS
+      evidence: "write_to_excel() で column=1(A)〜column=10(J) に書き込み。顧客記入列には書き込まない"
+    RQ-9:
+      status: PASS
+      evidence: "get_last_data_row() で削除後の末尾行を取得し、=A{n}+1 の数式で続番採番"
+    RQ-10:
+      status: PASS
+      evidence: "--old が②過去解析済み結果、--new が①ver3再解析結果として extract_all(old_dir, new_dir) に渡す"
+    RQ-11:
+      status: PASS
+      evidence: "全関数でファイル不在時スキップ実装済み。--project / --variant は自由文字列なのでver2.1も対応"
+
+  extraction_rules:
+    input_info_txt:       {status: PASS}
+    image_diffs:          {status: PASS, note: "類似度閾値 0.7 は仕様と一致"}
+    cpuload_requirements: {status: PASS, note: "TaskID キーで NodeName 変化を検出"}
+    requirements_csv:     {status: PASS}
+    budget_csv:           {status: PASS}
+    input_data_csv:       {status: PASS}
+    tsync_csv:            {status: PASS}
+    processing_time_result:
+      status: PASS
+      note: "バイト比較スキップなし（軽微）。抽出ロジックは差分ありのみ出力のため実害なし"
+    schedule_result_csv:  {status: PASS, note: "id/name 重複排除（-NN 集約）を実装"}
+    schedule_result_fail_list_csv:
+      status: PASS
+      note: "1行目・2行目（サブヘッダ）の変化を両方検出"
+    processing_time_swc_group_result:
+      status: PASS
+      note: "extract_all() に含まれておらず、差分なし期待ファイルとして正しくスキップ"
+    node_straddling_slot_pickup_result:
+      status: PASS
+      note: "同上"
+    schedule_result_pass_fail:
+      status: TODO
+      note: "PASS/FAIL判定列の変化検出は仕様上 TODO として明記済み。未実装は意図的"
+
+  issues: []
+
+# ============================================================
+# verify_diff.py レビュー結果
+# ============================================================
+verify_diff:
+  overall: PARTIAL_PASS
+
+  requirements:
+    RQ-1:
+      status: PASS
+      evidence: "load_excel_entries() で row[7]==PROJECT and row[8]==VARIANT でフィルタ"
+    RQ-2:
+      status: PASS
+      evidence: "phase1_file_inventory() で diff_files の Excel 網羅性を確認"
+    RQ-3:
+      status: PASS
+      evidence: "phase2_csv_diffs() の no_diff_expected で偽陽性チェック"
+    RQ-4:
+      status: PASS
+      evidence: "ALLOWED_DIFF_TYPES セットで diff_type を照合し許容外は NG"
+    RQ-5:
+      status: PASS
+      evidence: "phase4_entry_accuracy() で normalize_folder('tmp'→'temp') + CSV拡張子補完で実在確認"
+    RQ-6:
+      status: PASS
+      evidence: "phase5_meta_consistency() で project/variant/link 列を照合"
+    RQ-7:
+      status: PASS
+      evidence: "REPORT_OUT に yaml.dump() でレポートを出力"
+    RQ-8:
+      status: PASS
+      evidence: "evaluate_quality_gates() で QG-1〜QG-4 の PASS/FAIL と overall を stdout に出力"
+    RQ-9:
+      status: PASS
+      evidence: "main() 末尾で review_plan_m02.yaml の execution_status を更新"
+    RQ-10:
+      status: FAIL
+      evidence: "PROJECT / VARIANT / OLD / NEW / XLSX / REPORT_OUT がモジュール先頭にハードコード"
+      action_required: "CLI 引数化（--project, --variant, --old, --new, --xlsx, --report-out）が必要"
+
+  other_issues:
+    - id: ISSUE-V-1
+      severity: minor
+      target: "scripts/verify_diff.py L3-5 (docstring)"
+      detail: "docstring が 'ver1 m02 Output差分シート セルフレビュースクリプト' のまま。
+               ファイルリネーム時に未更新。汎用ツールとして使用するなら修正が必要"
+    - id: ISSUE-V-2
+      severity: minor
+      target: "REPORT_OUT / plan_path 変数"
+      detail: "'verify_report_m02.yaml' / 'review_plan_m02.yaml' と m02 固定のファイル名。
+               RQ-10 対応（CLI引数化）と同時に動的生成（例: verify_report_{variant}.yaml）に変更が必要"
+    - id: ISSUE-V-3
+      severity: minor
+      target: "files_differ() 関数 (subprocess.run(['diff', ...]))"
+      detail: "Linux の diff コマンドに依存。Windows 環境では動作しない。
+               Path.read_bytes() 比較に置き換えることで OS 非依存にできる"
+    - id: ISSUE-V-4
+      severity: info
+      target: "import os（L8）"
+      detail: "os モジュールをインポートしているが使用箇所が見当たらない。不要な import"
+
+# ============================================================
+# サマリ
+# ============================================================
+summary:
+  extract_and_write_diff:
+    rq_pass: 11
+    rq_fail: 0
+    issues: 0
+    verdict: "全 RQ を充足。schedule_result PASS/FAIL 検出は TODO として仕様に明記済み"
+  verify_diff:
+    rq_pass: 9
+    rq_fail: 1
+    issues: 4
+    verdict: "RQ-10（CLI引数化・全バリアント対応）が未実装。他3件は軽微な改善事項"
+
+  priority_actions:
+    - priority: 1
+      action: "verify_diff.py の CLI引数化（RQ-10）"
+      reason: "他8バリアントの検証に必須。現状は ver1/m02 専用"
+    - priority: 2
+      action: "verify_diff.py docstring・ファイル名変数の更新（ISSUE-V-1, V-2）"
+      reason: "CLI引数化と同時に対応"
+    - priority: 3
+      action: "files_differ() を subprocess から read_bytes() 比較に変更（ISSUE-V-3）"
+      reason: "OS依存解消"
+    - priority: 4
+      action: "不要な import os の削除（ISSUE-V-4）"
+      reason: "クリーンアップ"
