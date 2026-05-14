@@ -567,3 +567,11 @@ FAIL になった場合は YAML レポートの該当フェーズを確認し、
 * 比較には Windows の「フォルダ比較」機能、WinMerge、`diff` コマンド等を利用できます。
 
 * 差分がないファイルは記入不要です。差分なしファイルを誤って記入すると `verify_diff.py` の QG-1 が FAIL になります。
+
+* **差分なし期待ファイル**: `processing_time_SWC_group_result.csv`、`node_straddling_slot_pickup_result.csv`、`temp/after_budget.csv` の 3 ファイルは差分が発生しないことを前提としています。 +
+  これらに差分が発生した場合は自動振り分けロジックが存在しないため、内容を目視で確認したうえで手動記入してください。 +
+  Excel 記入後に `verify_diff.py` を実行し、QG-1 が PASS になることを確認してください。
+
+* **差分なし期待ファイル**: `processing_time_SWC_group_result.csv`、`node_straddling_slot_pickup_result.csv`、`temp/after_budget.csv` の 3 ファイルは差分が発生しないことを前提としています。 +
+  これらに差分が発生した場合は自動抖り分けロジックが存在しないため、内容を目視で確認した上で手動記入してください。 +
+  Excel 記入後に `verify_diff.py` を実行し、QG-1 が PASS になることを確認してください。

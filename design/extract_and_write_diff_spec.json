@@ -85,7 +85,7 @@
   "excel_output": {
     "sheet": "Output差分",
     "columns": {
-      "A": "No（連番数式: 先頭行は固定値 1、以降は =A{前行}+1 の Excel 数式）",
+      "A": "No（全エントリが =A{前行}+1 の Excel 数式。先頭エントリが行4の場合は =A3+1 を書き込む。A3=0 なら表示値は 1）",
       "B": "フォルダ（ルート直下の場合は '-'、temp配下は 'tmp'）",
       "C": "ファイル名（拡張子なし可、画像ファイルは拡張子あり）",
       "D": "差分概要",
@@ -108,12 +108,13 @@
 
   "detection_guarantee": {
     "summary": "差分の見落とし（サイレント失敗）は構造的に発生しない",
+    "scope": "extract_all() が _check() で追跡する差分あり期待ファイルに限定される。差分なし期待の3ファイル（processing_time_SWC_group_result.csv / node_straddling_slot_pickup_result.csv / temp/after_budget.csv）は監視対象外。これらが差分ありでも FATAL にならないが、verify_diff.py の QG-1 phase1 で検知される",
     "mechanism": [
-      "各対象ファイルに対して read_bytes() によるバイト比較で差分の有無を必ず判定する（_file_differs()）",
+      "extract_all() が追跡する各ファイルに対して read_bytes() によるバイト比較で差分の有無を必ず判定する（_file_differs()）",
       "差分ありと判定されたにもかかわらず抽出エントリが0件のファイルを undetected リストに記録する",
       "undetected が1件以上あれば exit=2（FATAL）で終了し、ロジック更新を促すメッセージを出力する"
     ],
-    "detection_rate": "差分ありファイルを検知する確率は常に 100%（バイト比較により保証）",
+    "detection_rate": "extract_all() 追跡対象ファイルの差分を検知する確率は 100%（バイト比較により保証）。差分なし期待ファイルは scope 注記を参照",
     "limitation": "抽出できなかった差分の内容は Excel に記録されない。しかし FATAL 終了により必ずオペレーターが気づける",
     "stdout_example": "検出率: 15/15 (100%)  ← 全差分ファイルのエントリ抽出に成功した場合の出力例"
   },
@@ -126,11 +127,13 @@
       "output_entries": [
         {
           "diff_type": "入力ファイルの差分",
+          "old_val": "-",
           "new_val": "要件チェックツール差分",
           "cause": "ver3ツールを用いたことによる差分"
         },
         {
           "diff_type": "入力ファイルの差分",
+          "old_val": "-",
           "new_val": "要件ファイル差分",
           "cause": "ver3フォーマットを使用した要件ファイルに置き換わったことによる差分"
         }
@@ -152,6 +155,7 @@
         "image_diff": {
           "condition": "旧に存在し新に存在しないファイルと追加ファイルの名前類似度が0.7以上のペアが存在する場合",
           "diff_type": "画像差分",
+          "old_val_format": "タイトル{旧ファイルstem}",
           "new_val_format": "タイトル{新ファイルstem}に変化"
         }
       }
