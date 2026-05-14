@@ -1,0 +1,53 @@
+name: Close Related Issues on PR Merge
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  issues: write
+
+jobs:
+  close-issues:
+    runs-on: ubuntu-latest
+    # マージされた PR のみ処理（クローズ済みでも未マージは除外）
+    if: github.event.pull_request.merged == true
+    steps:
+      - name: PR 本文から関連 issue 番号を抽出してクローズ
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const body = context.payload.pull_request.body || '';
+            const prNumber = context.payload.pull_request.number;
+
+            // Closes / Fixes / Resolves + #N パターンを抽出（大文字小文字不問）
+            const pattern = /(?:closes?|fixes?|resolves?)\s+#(\d+)/gi;
+            const matches = [...body.matchAll(pattern)];
+
+            if (matches.length === 0) {
+              core.info('No linked issues found in PR body.');
+              return;
+            }
+
+            for (const match of matches) {
+              const issueNumber = parseInt(match[1], 10);
+              try {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  body: `PR #${prNumber} がマージされたためこのIssueをクローズします。`,
+                });
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  state: 'closed',
+                  state_reason: 'completed',
+                });
+                core.info(`Closed issue #${issueNumber}`);
+              } catch (err) {
+                core.warning(`Failed to close issue #${issueNumber}: ${err.message}`);
+              }
+            }

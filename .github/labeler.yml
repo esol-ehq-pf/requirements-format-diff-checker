@@ -1,0 +1,24 @@
+# ラベル自動付与ルール（actions/labeler@v5 用）
+# issue / PR のタイトルや変更ファイルパスに基づいてラベルを付与する
+
+"bug":
+  - head-branch: ["^fix/.*", "^hotfix/.*"]
+
+"enhancement":
+  - head-branch: ["^feat/.*", "^feature/.*"]
+
+"documentation":
+  - changed-files:
+    - any-glob-to-any-file: ["docs/**", "*.adoc", "*.md"]
+
+"scripts":
+  - changed-files:
+    - any-glob-to-any-file: ["scripts/**"]
+
+"design":
+  - changed-files:
+    - any-glob-to-any-file: ["design/**"]
+
+"test":
+  - changed-files:
+    - any-glob-to-any-file: ["test/**"]

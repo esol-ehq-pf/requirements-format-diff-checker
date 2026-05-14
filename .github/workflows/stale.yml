@@ -1,0 +1,51 @@
+name: Stale Issues
+
+on:
+  schedule:
+    # 毎日 JST 09:00（UTC 00:00）に実行
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+          # --- issue ---
+          # 60日間更新がなければ stale ラベルを付与
+          days-before-issue-stale: 60
+          # stale になってさらに 14日間更新がなければクローズ
+          days-before-issue-close: 14
+          stale-issue-label: "stale"
+          stale-issue-message: >
+            このIssueは最後の更新から60日が経過したため `stale` ラベルを付与しました。
+            14日以内に更新がなければ自動的にクローズされます。
+            引き続き対応が必要な場合はコメントを追加してください。
+          close-issue-message: >
+            長期間更新がなかったためこのIssueを自動クローズしました。
+            再度対応が必要な場合は新しいIssueを作成するか、このIssueを再オープンしてください。
+
+          # --- PR ---
+          # 30日間更新がなければ stale ラベルを付与
+          days-before-pr-stale: 30
+          days-before-pr-close: 7
+          stale-pr-label: "stale"
+          stale-pr-message: >
+            このPRは最後の更新から30日が経過したため `stale` ラベルを付与しました。
+            7日以内に更新がなければ自動的にクローズされます。
+          close-pr-message: >
+            長期間更新がなかったためこのPRを自動クローズしました。
+
+          # `wontfix` や `pinned` ラベルがある issue はスキップ
+          exempt-issue-labels: "wontfix,pinned,on-hold"
+          exempt-pr-labels: "wontfix,pinned,on-hold"
+
+          # クローズ時に reason を "not_planned" に設定
+          close-issue-reason: not_planned

@@ -1,0 +1,33 @@
+name: TODO to Issue
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/**"
+      - "test/**"
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  todo-to-issue:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: TODO コメントから issue を自動作成
+        uses: alstr/todo-to-issue-action@v5
+        with:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 対象ファイルの拡張子
+          LANGUAGES: '{"Python": {"extensions": [".py"], "markers": [{"regex": "#\\s*(TODO|FIXME|HACK|BUG)\\s*(.+)", "label": "TODO"}]}}'
+          # issue の本文に含めるリポジトリルートからの相対パス情報を付与
+          IDENTIFIERS: '[{"name": "TODO", "labels": ["enhancement"]}, {"name": "FIXME", "labels": ["bug"]}, {"name": "BUG", "labels": ["bug"]}, {"name": "HACK", "labels": ["enhancement"]}]'
+          # 同一 TODO の重複 issue を作らない
+          INSERT_ISSUE_URLS: true
+          # クローズ済み issue を再オープンしない
+          REOPEN_CLOSED: false
+          CLOSE_ISSUES: true
+          AUTO_ASSIGN: true

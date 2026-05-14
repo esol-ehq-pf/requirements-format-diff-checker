@@ -1,0 +1,52 @@
+# GitHub ラベル定義
+# gh label import コマンドまたは actions/labeler の初期化に使用
+# 手動で登録する場合: gh label create "name" --color "XXXXXX" --description "..."
+
+labels:
+  - name: bug
+    color: "d73a4a"
+    description: "不具合・バグ報告"
+
+  - name: enhancement
+    color: "a2eeef"
+    description: "機能追加・改善要望"
+
+  - name: documentation
+    color: "0075ca"
+    description: "ドキュメント関連"
+
+  - name: question
+    color: "d876e3"
+    description: "質問・調査依頼"
+
+  - name: design
+    color: "e4e669"
+    description: "設計・仕様関連"
+
+  - name: scripts
+    color: "0e8a16"
+    description: "スクリプト関連"
+
+  - name: test
+    color: "f9d0c4"
+    description: "テスト関連"
+
+  - name: stale
+    color: "ededed"
+    description: "長期間更新なし（自動付与）"
+
+  - name: wontfix
+    color: "ffffff"
+    description: "対応しない"
+
+  - name: pinned
+    color: "e08c2e"
+    description: "stale クローズから除外（固定）"
+
+  - name: on-hold
+    color: "bfd4f2"
+    description: "保留中"
+
+  - name: TODO
+    color: "fbca04"
+    description: "コード内 TODO から自動作成"

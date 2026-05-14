@@ -1,0 +1,41 @@
+name: Auto Assign
+
+on:
+  issues:
+    types: [opened]
+  pull_request:
+    types: [opened]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  auto-assign:
+    runs-on: ubuntu-latest
+    steps:
+      - name: issue / PR を作成者に自動アサイン
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const actor = context.actor;
+            const payload = context.payload;
+
+            if (context.eventName === 'issues') {
+              await github.rest.issues.addAssignees({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: payload.issue.number,
+                assignees: [actor],
+              });
+              core.info(`Assigned issue #${payload.issue.number} to ${actor}`);
+            } else if (context.eventName === 'pull_request') {
+              await github.rest.issues.addAssignees({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: payload.pull_request.number,
+                assignees: [actor],
+              });
+              core.info(`Assigned PR #${payload.pull_request.number} to ${actor}`);
+            }

@@ -1,0 +1,37 @@
+# issue キーワードラベルルール（github/issue-labeler@v3.4 用）
+# issue のタイトル・本文にマッチするキーワードでラベルを付与する
+
+bug:
+  - "バグ"
+  - "不具合"
+  - "エラー"
+  - "Error"
+  - "bug"
+  - "fix"
+
+enhancement:
+  - "改善"
+  - "機能追加"
+  - "feature"
+  - "enhancement"
+  - "追加"
+
+documentation:
+  - "ドキュメント"
+  - "docs"
+  - "manual"
+  - "マニュアル"
+  - "仕様書"
+  - "README"
+
+question:
+  - "質問"
+  - "question"
+  - "how to"
+  - "どうすれば"
+
+design:
+  - "設計"
+  - "design"
+  - "spec"
+  - "仕様"
