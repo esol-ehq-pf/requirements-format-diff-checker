@@ -36,7 +36,7 @@
   },
 
   "hardcoded_config": {
-    "note": "現在のバージョンでは対象パスがハードコードされている。RQ-10実装時にCLI引数化する",
+    "note": "[DEPRECATED] RQ-10実装後は全てCLI引数で指定する。現在のハードコード値は互換維持のため残存",
     "project": "ver1",
     "variant": "m02",
     "old_dir": "work/format-change/input/scheduling_requirement_check_analysis_result",
@@ -44,6 +44,53 @@
     "xlsx": "work/format-change/input/過去プロジェクト(ver1_ver2_ver2.1)の要件ファイルフォーマット変更.xlsx",
     "report_out": "work/format-change/test/verify_report_m02.yaml",
     "plan_path": "work/format-change/test/review_plan_m02.yaml"
+  },
+
+  "cli": {
+    "command": "python3 scripts/verify_diff.py",
+    "arguments": {
+      "--project": {
+        "required": true,
+        "type": "string",
+        "description": "プロジェクト名（例: ver1, ver2, ver2.1）"
+      },
+      "--variant": {
+        "required": true,
+        "type": "string",
+        "description": "バリアント名（例: m02, b01, m01）"
+      },
+      "--old": {
+        "required": true,
+        "type": "path",
+        "description": "旧解析結果ディレクトリ（②過去解析済み結果）"
+      },
+      "--new": {
+        "required": true,
+        "type": "path",
+        "description": "新解析結果ディレクトリ（①ver3ツール再解析結果）"
+      },
+      "--xlsx": {
+        "required": true,
+        "type": "path",
+        "description": "Output差分シートを持つExcelファイルパス"
+      },
+      "--report-out": {
+        "required": false,
+        "type": "path",
+        "default_rule": "test/verify_report_{variant}.yaml（スクリプトの2階層上を基点）",
+        "description": "検証レポートの出力先YAMLパス"
+      },
+      "--plan": {
+        "required": false,
+        "type": "path",
+        "default_rule": "test/review_plan_{variant}.yaml（スクリプトの2階層上を基点）",
+        "description": "レビュー計画YAMLパス（存在する場合のみ execution_status を更新）"
+      }
+    },
+    "exit_codes": {
+      "0": "全QG PASSで正常終了",
+      "1": "いずれかのQGがFAIL"
+    }
   },
 
   "quality_gates": {
@@ -98,6 +145,7 @@
     },
     "phase2_csv_diffs": {
       "description": "主要CSVの差分内容確認",
+      "generalization_note": "csv_checksの内容はver1/m02で観測された差分パターンを元にしている。他バリアントでパターンが異なる場合は誤検知（false negative）が発生しうる。phase2はQG-1の補助的な確認であり、phase1（ファイル網羅性）がメインゲートとなる",
       "no_diff_expected": [
         "processing_time_SWC_group_result.csv",
         "node_straddling_slot_pickup_result.csv",
