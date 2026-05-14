@@ -1,0 +1,242 @@
+meta:
+  project: ver1
+  variant: m02
+  old_dir: work/format-change/input/scheduling_requirement_check_analysis_result
+  new_dir: work/format-change/input/ver1_m02_AP_再解析結果/output
+  excel: work/format-change/input/過去プロジェクト(ver1_ver2_ver2.1)の要件ファイルフォーマット変更.xlsx
+  sheet: Output差分
+  report_output: work/format-change/verify_report_m02.yaml
+quality_gates:
+- id: QG-1
+  name: 網羅性ゲート（漏れなし）
+  description: '実ファイル差分から検出された全差分種別が Excel エントリに存在すること。 未記録の差分が 0 件であること。
+
+    '
+  criteria: unrecorded_diffs == 0
+  severity: BLOCKER
+- id: QG-2
+  name: 正確性ゲート（誤記なし）
+  description: 'Excel に記載した各エントリの「フォルダ・ファイル・差分概要・過去値・ver3値」が 実ファイル差分と一致すること。
+
+    '
+  criteria: entry_ng_count == 0
+  severity: BLOCKER
+- id: QG-3
+  name: 推定原因カバレッジゲート
+  description: '推定原因が設定されているエントリについて、 フォーマット変更番号の記載形式が統一されていること（空欄は許容）。
+
+    '
+  criteria: cause_format_violation_count == 0
+  severity: WARNING
+- id: QG-4
+  name: プロジェクト・バリアント整合性ゲート
+  description: '全 m02 エントリの プロジェクト列="ver1"、バリ列="m02" であること。
+
+    '
+  criteria: meta_mismatch_count == 0
+  severity: BLOCKER
+phases:
+- id: P1
+  name: ファイルレベルインベントリ確認
+  description: '① と ② の全ファイル一覧を取得し、 差分ありファイル・差分なしファイルを判定する。 Excel エントリが差分ありファイルを全て参照していることを確認する。
+
+    '
+  targets:
+  - input_info.txt
+  - schedule_result.csv
+  - schedule_result_fail_list.csv
+  - processing_time_result.csv
+  - processing_time_SWC_group_result.csv
+  - node_straddling_slot_pickup_result.csv
+  - input_data_ba.csv
+  - input_data_igr.csv
+  - processing_load_duration_graph/PASS/
+  - processing_load_duration_graph/FAIL/
+  - Sequence_duration_graph/PASS/
+  - Sequence_duration_graph/FAIL/
+  - SWC_budget_duration_graph/PASS/
+  - SWC_budget_duration_graph/FAIL/
+  - WakeupInterval_graph/PASS/
+  - WakeupInterval_graph/FAIL/
+  - temp/before_requirements.csv
+  - temp/after_requirements.csv
+  - temp/before_cpuload_requirements.csv
+  - temp/after_cpuload_requirements.csv
+  - temp/before_budget.csv
+  - temp/after_budget.csv
+  - temp/before_csv_data_tsync_PlusBA.csv
+  - temp/after_csv_data_tsync_PlusBA.csv
+  criteria:
+  - all_diff_files_covered_in_excel: true
+  - no_diff_files_missing_from_excel: true
+  gate: QG-1
+- id: P2
+  name: CSV差分の構造化確認
+  description: '各 CSV ファイルについて diff を実行し、差分種別を構造化して Excel エントリと 1:1 で突き合わせる。
+
+    '
+  checks:
+    schedule_result.csv:
+      diff_types_to_detect:
+      - id/name変化（VidDraw→viddraw）
+      - id/name変化（AhbAhs/Main→AhbAhs）
+      - id/name変化（LgtCtl/LightingControl→LgtCtl）
+      - etcの変化（Node名がSWC名/Node名に統一）
+      verify: excel_entries_match_detected_types
+    schedule_result_fail_list.csv:
+      diff_types_to_detect:
+      - 列ヘッダの変化（Node名がSWC名/Node名に統一）
+      verify: excel_entries_match_detected_types
+    processing_time_result.csv:
+      diff_types_to_detect:
+      - TaskIDの追加（PF_window系）
+      verify: excel_entries_match_detected_types
+    processing_time_SWC_group_result.csv:
+      diff_types_to_detect: []
+      verify: no_excel_entry_exists
+    node_straddling_slot_pickup_result.csv:
+      diff_types_to_detect: []
+      verify: no_excel_entry_exists
+    input_data_ba.csv:
+      diff_types_to_detect:
+      - pf_1ms_base行の消失
+      - pf_1ms_mid行の消失
+      - Nodeの順序入れ替わり
+      verify: excel_entries_match_detected_types
+    input_data_igr.csv:
+      diff_types_to_detect:
+      - pf_1ms_base行の消失
+      - pf_1ms_mid行の消失
+      - Nodeの順序入れ替わり
+      verify: excel_entries_match_detected_types
+    temp/before_requirements.csv:
+      diff_types_to_detect:
+      - Sequence/Sender/Receiver名の変化（SWC名/Node名に統一）
+      - RequirementIdの変化（VidDraw→viddraw）
+      - RequirementOwnerの変化（VidDraw→viddraw）
+      - キーの追加（Fsync→Targetキー追加）
+      verify: excel_entries_match_detected_types
+    temp/after_requirements.csv:
+      diff_types_to_detect:
+      - Sequence/Sender/Receiver名の変化（SWC名/Node名に統一）
+      - RequirementIdの変化（VidDraw→viddraw）
+      - RequirementOwnerの変化（VidDraw→viddraw）
+      - RequirementOwnerの変化（AhbAhs/Main→AhbAhs）
+      - RequirementOwnerの変化（LgtCtl/LightingControl→LgtCtl）
+      - キーの追加（Fsync→Targetキー追加）
+      verify: excel_entries_match_detected_types
+    temp/before_cpuload_requirements.csv:
+      diff_types_to_detect:
+      - NodeNameの変化（VidDraw→viddraw）
+      - NodeNameの変化（ViewRdr_CIREND系→viewrdr_cirend）
+      - NodeNameの変化（ViewRdr_SCRM系→viewrdr_scrm）
+      - NodeNameの変化（ViewRdr_UIREND系→viewrdr_uirend）
+      - TaskIDの追加（PF_window系）
+      verify: excel_entries_match_detected_types
+    temp/after_cpuload_requirements.csv:
+      diff_types_to_detect:
+      - TaskIDの追加（PF_window系）
+      verify: excel_entries_match_detected_types
+    temp/before_budget.csv:
+      diff_types_to_detect:
+      - TaskListの変化（SplAd系・バリアントサフィックス削除）
+      verify: excel_entries_match_detected_types
+    temp/after_budget.csv:
+      diff_types_to_detect: []
+      verify: no_excel_entry_exists
+    temp/before_csv_data_tsync_PlusBA.csv:
+      diff_types_to_detect: []
+      verify: auto_detect
+    temp/after_csv_data_tsync_PlusBA.csv:
+      diff_types_to_detect: []
+      verify: auto_detect
+  criteria:
+  - detected_diff_types_fully_covered: true
+  - no_extra_excel_entries_for_no_diff_files: true
+  gate: QG-1, QG-2
+- id: P3
+  name: 画像ファイル差分確認
+  description: '各グラフフォルダ（PASS/FAIL）のファイル一覧を比較し、 増減・名前変化を検出して Excel エントリと突き合わせる。
+
+    '
+  checks:
+    processing_load_duration_graph/PASS:
+      expected_deleted:
+      - duration_of_PF_1msTask(2SoC, Base).png
+      - duration_of_PF_1msTask(2SoC, Mid).png
+      expected_added: []
+      expected_renamed: []
+    Sequence_duration_graph/PASS:
+      expected_deleted: []
+      expected_added: []
+      expected_renamed:
+      - old: duration_of_VidDraw-01.png
+        new: duration_of_viddraw-01.png
+    processing_load_duration_graph/FAIL:
+      expected_deleted: []
+      expected_added: []
+      expected_renamed: []
+    Sequence_duration_graph/FAIL:
+      expected_deleted: []
+      expected_added: []
+      expected_renamed: []
+    SWC_budget_duration_graph/PASS:
+      expected_deleted: []
+      expected_added: []
+      expected_renamed: []
+    SWC_budget_duration_graph/FAIL:
+      expected_deleted: []
+      expected_added: []
+      expected_renamed: []
+    WakeupInterval_graph/PASS:
+      expected_deleted: []
+      expected_added: []
+      expected_renamed: []
+    WakeupInterval_graph/FAIL:
+      expected_deleted: []
+      expected_added: []
+      expected_renamed: []
+  criteria:
+  - actual_image_diffs_match_expected: true
+  - all_image_diffs_recorded_in_excel: true
+  gate: QG-1, QG-2
+- id: P4
+  name: Excelエントリ正確性確認
+  description: 'Excel に記載した各エントリの内容（フォルダ・ファイル・差分概要・過去値・ver3値）が 実ファイル差分と一致しているかをスクリプトで再検証する。
+
+    '
+  checks:
+  - field: フォルダ
+    rule: ファイルが存在するパスの親フォルダ名と一致すること（"-"は対象なし）
+  - field: ファイル
+    rule: 対象ファイル名が実在するか、または差分元ファイルに含まれること
+  - field: 差分_概要
+    rule: 差分種別の文言が許容リストに含まれること
+  - field: 差分_過去
+    rule: 空欄("-")でない場合、旧ファイルから検出可能な文字列であること
+  - field: 差分_ver3
+    rule: 空欄("-")でない場合、新ファイルから検出可能な文字列であること
+  criteria:
+  - all_entry_fields_accurate: true
+  gate: QG-2
+- id: P5
+  name: メタ整合性確認
+  description: '全 m02 エントリの プロジェクト列・バリ列・画像リンク列が正しい値であることを確認する。
+
+    '
+  criteria:
+  - project_column_all_ver1: true
+  - variant_column_all_m02: true
+  - link_column_consistent: true
+  gate: QG-4
+execution_status:
+  planned_date: '2026-05-14'
+  executed_date: '2026-05-14'
+  script: work/format-change/verify_m02_diff.py
+  report: work/format-change/verify_report_m02.yaml
+  gate_results:
+    QG-1: PASS
+    QG-2: PASS
+    QG-3: PASS
+    QG-4: PASS
+  overall: PASS

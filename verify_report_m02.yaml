@@ -1,0 +1,602 @@
+meta:
+  executed_date: '2026-05-14'
+  excel_entries_count: 42
+  project: ver1
+  variant: m02
+quality_gates:
+  QG-1: PASS
+  QG-2: PASS
+  QG-3: PASS
+  QG-4: PASS
+overall: PASS
+phase1_file_inventory:
+  diff_files:
+  - input_info.txt
+  - schedule_result.csv
+  - schedule_result_fail_list.csv
+  - processing_time_result.csv
+  - input_data_ba.csv
+  - input_data_igr.csv
+  - temp/before_requirements.csv
+  - temp/after_requirements.csv
+  - temp/before_cpuload_requirements.csv
+  - temp/after_cpuload_requirements.csv
+  - temp/before_budget.csv
+  - temp/before_csv_data_tsync_PlusBA.csv
+  - temp/after_csv_data_tsync_PlusBA.csv
+  no_diff_files:
+  - processing_time_SWC_group_result.csv
+  - node_straddling_slot_pickup_result.csv
+  - temp/after_budget.csv
+  uncovered_diff_files: []
+  false_positive_no_diff_files: []
+  gate:
+    result: OK
+    detail: 全差分ファイルが Excel に記載済み
+phase2_csv_diffs:
+  no_diff_expected_files:
+    files:
+    - processing_time_SWC_group_result.csv
+    - node_straddling_slot_pickup_result.csv
+    - temp/after_budget.csv
+    false_entries: []
+    gate:
+      result: OK
+      detail: ''
+  csv_checks:
+    input_data_ba.csv:
+      summary:
+        exists: true
+        added_count: 804
+        deleted_count: 533932
+        changed_count: 204
+        added_samples:
+        - base,CA,1,Preempt,adas_sdk_igr_proxy_base_ca,5454.156,5454.167,C1
+        - base,CA,1,Preempt,adas_sdk_igr_proxy_base_ca,5804.186000000001,5804.195000000001,C3
+        - base,CR,1,Preempt,adas_sdk_igr_proxy_base_cr,6104.145,6104.156,C3
+        - base,CA,2,FcmRc,SfmGradC1,6382.687394957983,6382.847118847539,C2
+        - mid,CR,2,Preempt,m2b_spi_2nd_Any_send,7007.0019999999995,7007.063999999999,C3
+        deleted_samples:
+        - base,CR,0,Preempt,pf_1ms_base,5419.238,5419.255,C4
+        - mid,CR,0,Preempt,pf_1ms_mid,5420.119,5420.218999999999,C4
+        - base,CR,0,Preempt,pf_1ms_base,5420.192999999999,5420.299,C4
+        - mid,CR,0,Preempt,pf_1ms_mid,5421.063999999999,5421.072999999999,C4
+        - base,CR,0,Preempt,pf_1ms_base,5421.179,5421.192999999999,C4
+        changed_samples:
+        - old: mid,CR,0,Preempt,pf_1ms_mid,5610.076,5610.169,C4
+          new: base,CA,3,PvmRcdB,PvmRcdPksb,5610.079771908763,5610.148559423769,C4
+        - old: base,CR,0,Preempt,pf_1ms_base,6068.201999999999,6068.226,C2
+          new: mid,CA,2,PvmMiscM,WarpTorusDmdFr,6068.317900360144,6074.681945978391,C2
+        - old: mid,CR,0,Preempt,pf_1ms_mid,11152.059,11152.226999999999,C1
+          new: base,CA,2,Preempt,adas_sdk_supervisor_base_ca_middle_asil_b,11152.142,11152.15,C1
+        - old: mid,CR,0,Preempt,pf_1ms_mid,11823.056,11823.069,C4
+          new: base,CA,1,JtbPav,JtbPav,11823.103721488595,11823.790636254502,C4
+        - old: mid,CR,0,Preempt,pf_1ms_mid,12693.064,12693.078999999998,C3
+          new: base,CA,0,Preempt,viddraw,12693.143,12693.168,C3
+      checks:
+        pf_1ms_base消失: OK
+        pf_1ms_mid消失: OK
+        Nodeの順序入れ替わり: OK
+      all_passed: true
+    input_data_igr.csv:
+      summary:
+        exists: true
+        added_count: 838
+        deleted_count: 533809
+        changed_count: 205
+        added_samples:
+        - base,CA,1,Preempt,adas_sdk_igr_proxy_base_ca,5804.186000000001,5804.195000000001,C3
+        - base,CA,2,FcmRc,SfmGradC1,6382.687394957983,6382.847118847539,C2
+        - base,CR,2,Mrf,Mrf,7168.019387755102,7169.505582232893,C2
+        - mid,CA,3,PvmSorM,SsParserRr,7426.012198079232,7426.05943697479,C4
+        - mid,CA,2,PvmMlM,SsOrLt,7894.967720288115,7898.645271308524,C3
+        deleted_samples:
+        - base,CR,0,Preempt,pf_1ms_base,5419.238,5419.255,C4
+        - mid,CR,0,Preempt,pf_1ms_mid,5420.119,5420.218999999999,C4
+        - base,CR,0,Preempt,pf_1ms_base,5420.192999999999,5420.299,C4
+        - mid,CR,0,Preempt,pf_1ms_mid,5421.063999999999,5421.072999999999,C4
+        - base,CR,0,Preempt,pf_1ms_base,5421.179,5421.192999999999,C4
+        changed_samples:
+        - old: mid,CR,0,Preempt,pf_1ms_mid,5610.076,5610.169,C4
+          new: base,CA,3,PvmRcdB,PvmRcdPksb,5610.079771908763,5610.148559423769,C4
+        - old: mid,CR,0,Preempt,pf_1ms_mid,11152.059,11152.226999999999,C1
+          new: base,CA,2,Preempt,adas_sdk_supervisor_base_ca_middle_asil_b,11152.142,11152.15,C1
+        - old: mid,CR,0,Preempt,pf_1ms_mid,12693.064,12693.078999999998,C3
+          new: base,CA,0,Preempt,viddraw,12693.143,12693.168,C3
+        - old: base,CR,0,Preempt,pf_1ms_base,13803.204,13803.223,C3
+          new: mid,CA,3,PvmMlM,SsOrRt,13803.262078031212,13805.9076362545,C3
+        - old: mid,CR,0,Preempt,pf_1ms_mid,15826.071999999998,15826.081,C4
+          new: mid,CR,2,Preempt,b2m_spi_2nd_Any_recv,15826.081,15826.131,C4
+      checks:
+        pf_1ms_base消失: OK
+        pf_1ms_mid消失: OK
+        Nodeの順序入れ替わり: OK
+      all_passed: true
+    processing_time_result.csv:
+      summary:
+        exists: true
+        added_count: 17
+        deleted_count: 0
+        changed_count: 2
+        added_samples:
+        - '"PF_window1(MID, BaseCa0)","Preempt","PF_window1(MID, BaseCa0)","-","-","-","-","-","-","-","NA","NA","[NA]
+          Node not found from input csv"'
+        - '"PF_window3(MID, BaseCa0)","Preempt","PF_window3(MID, BaseCa0)","-","-","-","-","-","-","-","NA","NA","[NA]
+          Node not found from input csv"'
+        - '"PF_window7(MID, BaseCa0)","Preempt","PF_window7(MID, BaseCa0)","-","-","-","-","-","-","-","NA","NA","[NA]
+          Node not found from input csv"'
+        - '"PF_window2(MID, BaseCa1)","Preempt","PF_window2(MID, BaseCa1)","-","-","-","-","-","-","-","NA","NA","[NA]
+          Node not found from input csv"'
+        - '"PF_window4(MID, BaseCa1)","Preempt","PF_window4(MID, BaseCa1)","-","-","-","-","-","-","-","NA","NA","[NA]
+          Node not found from input csv"'
+        deleted_samples: []
+        changed_samples:
+        - old: '"PF_1msTask(2SoC, Base)","Preempt","pf_1ms_base","0.71","0.009","0.077","0.023","0.586","0.075","0.302","PASS","PASS","-"'
+          new: '"PF_1msTask(2SoC, Base)","Preempt","PF_1msTask(2SoC, Base)","-","-","-","-","-","-","-","NA","NA","[NA]
+            Node not found from input csv"'
+        - old: '"PF_1msTask(2SoC, Mid)","Preempt","pf_1ms_mid","0.71","0.007","0.067","0.019","0.606","0.07","0.278","PASS","PASS","-"'
+          new: '"PF_1msTask(2SoC, Mid)","Preempt","PF_1msTask(2SoC, Mid)","-","-","-","-","-","-","-","NA","NA","[NA]
+            Node not found from input csv"'
+      checks:
+        PF_window追加: OK
+      all_passed: true
+    schedule_result.csv:
+      summary:
+        exists: true
+        added_count: 0
+        deleted_count: 0
+        changed_count: 33
+        added_samples: []
+        deleted_samples: []
+        changed_samples:
+        - old: '"A","Input","Pksa-03","Pksa","Must","FAIL","[FAIL] deterministic([PkArbM]end_clock_ms:
+            114071.466 slot: C3  [Pksa]start_clock_ms: 114071.767 slot: C3 expect_slot:
+            [''C3'', ''C4'', ''C1'']) deterministic_fail:1/10647"'
+          new: '"A","Input","Pksa-03","Pksa","Must","FAIL","[FAIL] deterministic([PkArbM/PkArbM]end_clock_ms:
+            114071.466 slot: C3  [Pksa/Pksa]start_clock_ms: 114071.767 slot: C3 expect_slot:
+            [''C3'', ''C4'', ''C1'']) deterministic_fail:1/10647"'
+        - old: '"A","Input","PkArbM-01","PkArbM","Must","FAIL","[FAIL] slot_offset([Pksa]end_clock_ms:
+            114071.959 slot: C3  [PkArbM]start_clock_ms: 114096.115 slot: C4 expect_slot:
+            [''C3'']) slot_offset_fail:4/10647'
+          new: '"A","Input","PkArbM-01","PkArbM","Must","FAIL","[FAIL] slot_offset([Pksa/Pksa]end_clock_ms:
+            114071.959 slot: C3  [PkArbM/PkArbM]start_clock_ms: 114096.115 slot: C4
+            expect_slot: [''C3'']) slot_offset_fail:4/10647'
+        - old: '[FAIL] deterministic([Pksa]end_clock_ms: 114071.959 slot: C3  [PkArbM]start_clock_ms:
+            114096.115 slot: C4 expect_slot: [''C3'']) deterministic_fail:4/10647"'
+          new: '[FAIL] deterministic([Pksa/Pksa]end_clock_ms: 114071.959 slot: C3  [PkArbM/PkArbM]start_clock_ms:
+            114096.115 slot: C4 expect_slot: [''C3'']) deterministic_fail:4/10647"'
+        - old: '"A","Input","PkArbM-02","PkArbM","Must","FAIL","[FAIL] slot_offset([Pksb]end_clock_ms:
+            114071.762 slot: C3  [PkArbM]start_clock_ms: 114096.115 slot: C4 expect_slot:
+            [''C3'']) slot_offset_fail:2/10647'
+          new: '"A","Input","PkArbM-02","PkArbM","Must","FAIL","[FAIL] slot_offset([Pksb/Pksb]end_clock_ms:
+            114071.762 slot: C3  [PkArbM/PkArbM]start_clock_ms: 114096.115 slot: C4
+            expect_slot: [''C3'']) slot_offset_fail:2/10647'
+        - old: '[FAIL] deterministic([Pksb]end_clock_ms: 114071.762 slot: C3  [PkArbM]start_clock_ms:
+            114096.115 slot: C4 expect_slot: [''C3'']) deterministic_fail:2/10647"'
+          new: '[FAIL] deterministic([Pksb/Pksb]end_clock_ms: 114071.762 slot: C3  [PkArbM/PkArbM]start_clock_ms:
+            114096.115 slot: C4 expect_slot: [''C3'']) deterministic_fail:2/10647"'
+      checks:
+        VidDraw→viddraw変化: OK
+      all_passed: true
+    temp/before_cpuload_requirements.csv:
+      summary:
+        exists: true
+        added_count: 17
+        deleted_count: 0
+        changed_count: 4
+        added_samples:
+        - '"PF_window1(MID, BaseCa0)",Preempt,"PF_window1(MID, BaseCa0)",100.0,1.3425,,Base'
+        - '"PF_window3(MID, BaseCa0)",Preempt,"PF_window3(MID, BaseCa0)",100.0,1.4238,,Base'
+        - '"PF_window7(MID, BaseCa0)",Preempt,"PF_window7(MID, BaseCa0)",100.0,1.5477,,Base'
+        - '"PF_window2(MID, BaseCa1)",Preempt,"PF_window2(MID, BaseCa1)",100.0,0.5535,,Base'
+        - '"PF_window4(MID, BaseCa1)",Preempt,"PF_window4(MID, BaseCa1)",100.0,0.569,,Base'
+        deleted_samples: []
+        changed_samples:
+        - old: VidDraw,Preempt,VidDraw,25.0,0.068,BA,Base
+          new: VidDraw,Preempt,viddraw,25.0,0.068,BA,Base
+        - old: '"ViewRdr_CIREND(2SoC, PVM)",Preempt,"ViewRdr_CIREND(2SoC, PVM)",33.333,2.2575,IGR,Mid'
+          new: '"ViewRdr_CIREND(2SoC, PVM)",Preempt,viewrdr_cirend,33.333,2.2575,IGR,Mid'
+        - old: '"ViewRdr_SCRM(2SoC, PVM)",Preempt,"ViewRdr_SCRM(2SoC, PVM)",33.333,0.645,IGR,Mid'
+          new: '"ViewRdr_SCRM(2SoC, PVM)",Preempt,viewrdr_scrm,33.333,0.645,IGR,Mid'
+        - old: '"ViewRdr_UIREND(2SoC, PVM)",Preempt,"ViewRdr_UIREND(2SoC, PVM)",100.0,2.7735,IGR,Mid'
+          new: '"ViewRdr_UIREND(2SoC, PVM)",Preempt,viewrdr_uirend,100.0,2.7735,IGR,Mid'
+      checks:
+        PF_window追加: OK
+        NodeName変化: OK
+      all_passed: true
+    temp/after_cpuload_requirements.csv:
+      summary:
+        exists: true
+        added_count: 17
+        deleted_count: 0
+        changed_count: 2
+        added_samples:
+        - '"PF_window1(MID, BaseCa0)",Preempt,"PF_window1(MID, BaseCa0)",100.0,1.3425,,Base'
+        - '"PF_window3(MID, BaseCa0)",Preempt,"PF_window3(MID, BaseCa0)",100.0,1.4238,,Base'
+        - '"PF_window7(MID, BaseCa0)",Preempt,"PF_window7(MID, BaseCa0)",100.0,1.5477,,Base'
+        - '"PF_window2(MID, BaseCa1)",Preempt,"PF_window2(MID, BaseCa1)",100.0,0.5535,,Base'
+        - '"PF_window4(MID, BaseCa1)",Preempt,"PF_window4(MID, BaseCa1)",100.0,0.569,,Base'
+        deleted_samples: []
+        changed_samples:
+        - old: '"PF_1msTask(2SoC, Base)",Preempt,pf_1ms_base,12.5,0.1704,,Base'
+          new: '"PF_1msTask(2SoC, Base)",Preempt,"PF_1msTask(2SoC, Base)",12.5,0.1704,,Base'
+        - old: '"PF_1msTask(2SoC, Mid)",Preempt,pf_1ms_mid,12.5,0.1704,,Mid'
+          new: '"PF_1msTask(2SoC, Mid)",Preempt,"PF_1msTask(2SoC, Mid)",12.5,0.1704,,Mid'
+      checks:
+        PF_window追加: OK
+      all_passed: true
+    temp/before_budget.csv:
+      summary:
+        exists: true
+        added_count: 0
+        deleted_count: 0
+        changed_count: 12
+        added_samples: []
+        deleted_samples: []
+        changed_samples:
+        - old: M-CA1-PVM-1,"['ViewMo(m01_m02)', 'IrFL']"
+          new: M-CA1-PVM-1,"['ViewMo', 'IrFL']"
+        - old: M-CA1-AP/GCA-1,"['VseM', 'SnrRcg(m01_m02)', 'ApFsn', 'Pksb(m01_m02)',
+            'Pksa(m01_m02)']"
+          new: M-CA1-AP/GCA-1,"['VseM', 'SnrRcg', 'ApFsn', 'Pksb', 'Pksa']"
+        - old: M-CR2-AP-2,['PkArbM(m01_m02)']
+          new: M-CR2-AP-2,['PkArbM']
+        - old: B-CR1-CSP-4,"['SplSpm', 'SplPcd', 'SplAd(EventSpm)', 'SplAd(MapEnd)',
+            'SplAd(CSpm)', 'SplAd(TJSupport)', 'SplAd(Ymv)', 'SplAd(Rob)', 'SplCtrl',
+            'Isa', 'Tmn', 'SplHmi']"
+          new: B-CR1-CSP-4,"['SplSpm', 'SplPcd', 'EventSpm', 'MapEnd', 'CSpm', 'TrafficJamSupport',
+            'Ymv', 'Rob', 'SplCtrl', 'Isa', 'Tmn', 'SplHmi']"
+        - old: B-CA0-MDC-2,['MdColBA0(b01_m01_m02)']
+          new: B-CA0-MDC-2,['MdColBA0']
+      checks:
+        TaskList変化: OK
+      all_passed: true
+  gate:
+    result: OK
+    detail: 全CSV差分チェック通過
+phase3_image_diffs:
+  processing_load_duration_graph/PASS:
+    deleted:
+    - duration_of_PF_1msTask(2SoC, Base).png
+    - duration_of_PF_1msTask(2SoC, Mid).png
+    added: []
+    renames: []
+    uncovered_deleted: []
+    uncovered_renames: []
+    gate:
+      result: OK
+      detail: ''
+  processing_load_duration_graph/FAIL:
+    deleted: []
+    added: []
+    renames: []
+    uncovered_deleted: []
+    uncovered_renames: []
+    gate:
+      result: OK
+      detail: ''
+  Sequence_duration_graph/PASS:
+    deleted:
+    - duration_of_VidDraw-01.png
+    added:
+    - duration_of_viddraw-01.png
+    renames:
+    - old: duration_of_VidDraw-01.png
+      new: duration_of_viddraw-01.png
+      similarity: 0.92
+    uncovered_deleted: []
+    uncovered_renames: []
+    gate:
+      result: OK
+      detail: ''
+  Sequence_duration_graph/FAIL:
+    deleted: []
+    added: []
+    renames: []
+    uncovered_deleted: []
+    uncovered_renames: []
+    gate:
+      result: OK
+      detail: ''
+  SWC_budget_duration_graph/PASS:
+    deleted: []
+    added: []
+    renames: []
+    uncovered_deleted: []
+    uncovered_renames: []
+    gate:
+      result: OK
+      detail: ''
+  SWC_budget_duration_graph/FAIL:
+    deleted: []
+    added: []
+    renames: []
+    uncovered_deleted: []
+    uncovered_renames: []
+    gate:
+      result: OK
+      detail: ''
+  WakeupInterval_graph/PASS:
+    deleted: []
+    added: []
+    renames: []
+    uncovered_deleted: []
+    uncovered_renames: []
+    gate:
+      result: OK
+      detail: ''
+  WakeupInterval_graph/FAIL:
+    deleted: []
+    added: []
+    renames: []
+    uncovered_deleted: []
+    uncovered_renames: []
+    gate:
+      result: OK
+      detail: ''
+  gate:
+    result: OK
+    detail: 全画像差分記録済み
+phase4_entry_accuracy:
+  entries:
+  - 'no': =A55+1
+    folder: '-'
+    file: input_info.txt
+    diff_type: 入力ファイルの差分
+    issues: []
+    result: OK
+  - 'no': =A56+1
+    folder: '-'
+    file: input_info.txt
+    diff_type: 入力ファイルの差分
+    issues: []
+    result: OK
+  - 'no': =A57+1
+    folder: processing_load_duration_graph
+    file: duration_of_PF_1msTask(2SoC, Base).png
+    diff_type: ファイル消失
+    issues: []
+    result: OK
+  - 'no': =A58+1
+    folder: processing_load_duration_graph
+    file: duration_of_PF_1msTask(2SoC, Mid).png
+    diff_type: ファイル消失
+    issues: []
+    result: OK
+  - 'no': =A59+1
+    folder: Sequence_duration_graph
+    file: duration_of_VidDraw-01.png
+    diff_type: 画像差分
+    issues: []
+    result: OK
+  - 'no': =A60+1
+    folder: tmp
+    file: before_cpuload_requirements
+    diff_type: TaskIDの追加
+    issues: []
+    result: OK
+  - 'no': =A61+1
+    folder: tmp
+    file: before_cpuload_requirements
+    diff_type: NodeNameの変化
+    issues: []
+    result: OK
+  - 'no': =A62+1
+    folder: tmp
+    file: before_cpuload_requirements
+    diff_type: NodeNameの変化
+    issues: []
+    result: OK
+  - 'no': =A63+1
+    folder: tmp
+    file: before_cpuload_requirements
+    diff_type: NodeNameの変化
+    issues: []
+    result: OK
+  - 'no': =A64+1
+    folder: tmp
+    file: before_cpuload_requirements
+    diff_type: NodeNameの変化
+    issues: []
+    result: OK
+  - 'no': =A65+1
+    folder: tmp
+    file: after_cpuload_requirements
+    diff_type: TaskIDの追加
+    issues: []
+    result: OK
+  - 'no': =A66+1
+    folder: tmp
+    file: after_cpuload_requirements
+    diff_type: NodeNameの変化
+    issues: []
+    result: OK
+  - 'no': =A67+1
+    folder: tmp
+    file: after_cpuload_requirements
+    diff_type: NodeNameの変化
+    issues: []
+    result: OK
+  - 'no': =A68+1
+    folder: tmp
+    file: before_requirements
+    diff_type: キーの追加
+    issues: []
+    result: OK
+  - 'no': =A69+1
+    folder: tmp
+    file: before_requirements
+    diff_type: Sequence/Sender/Receiver/FirstTask/SecondTaskの変化
+    issues: []
+    result: OK
+  - 'no': =A70+1
+    folder: tmp
+    file: before_requirements
+    diff_type: RequirementIdの変化
+    issues: []
+    result: OK
+  - 'no': =A71+1
+    folder: tmp
+    file: before_requirements
+    diff_type: RequirementOwnerの変化
+    issues: []
+    result: OK
+  - 'no': =A72+1
+    folder: tmp
+    file: after_requirements
+    diff_type: キーの追加
+    issues: []
+    result: OK
+  - 'no': =A73+1
+    folder: tmp
+    file: after_requirements
+    diff_type: Sequence/Sender/Receiver/FirstTask/SecondTaskの変化
+    issues: []
+    result: OK
+  - 'no': =A74+1
+    folder: tmp
+    file: after_requirements
+    diff_type: RequirementIdの変化
+    issues: []
+    result: OK
+  - 'no': =A75+1
+    folder: tmp
+    file: after_requirements
+    diff_type: RequirementOwnerの変化
+    issues: []
+    result: OK
+  - 'no': =A76+1
+    folder: tmp
+    file: after_requirements
+    diff_type: RequirementOwnerの変化
+    issues: []
+    result: OK
+  - 'no': =A77+1
+    folder: tmp
+    file: after_requirements
+    diff_type: RequirementOwnerの変化
+    issues: []
+    result: OK
+  - 'no': =A78+1
+    folder: tmp
+    file: before_budget
+    diff_type: TaskListの変化
+    issues: []
+    result: OK
+  - 'no': =A79+1
+    folder: '-'
+    file: input_data_ba.csv
+    diff_type: pf_1ms_base行の消失
+    issues: []
+    result: OK
+  - 'no': =A80+1
+    folder: '-'
+    file: input_data_ba.csv
+    diff_type: pf_1ms_mid行の消失
+    issues: []
+    result: OK
+  - 'no': =A81+1
+    folder: '-'
+    file: input_data_ba.csv
+    diff_type: Nodeの順序入れ替わり
+    issues: []
+    result: OK
+  - 'no': =A82+1
+    folder: '-'
+    file: input_data_igr.csv
+    diff_type: pf_1ms_base行の消失
+    issues: []
+    result: OK
+  - 'no': =A83+1
+    folder: '-'
+    file: input_data_igr.csv
+    diff_type: pf_1ms_mid行の消失
+    issues: []
+    result: OK
+  - 'no': =A84+1
+    folder: '-'
+    file: input_data_igr.csv
+    diff_type: Nodeの順序入れ替わり
+    issues: []
+    result: OK
+  - 'no': =A85+1
+    folder: tmp
+    file: before_csv_data_tsync_PlusBA
+    diff_type: pf_1ms_base行の消失
+    issues: []
+    result: OK
+  - 'no': =A86+1
+    folder: tmp
+    file: before_csv_data_tsync_PlusBA
+    diff_type: pf_1ms_mid行の消失
+    issues: []
+    result: OK
+  - 'no': =A87+1
+    folder: tmp
+    file: before_csv_data_tsync_PlusBA
+    diff_type: mid行の時刻値変化
+    issues: []
+    result: OK
+  - 'no': =A88+1
+    folder: tmp
+    file: after_csv_data_tsync_PlusBA
+    diff_type: pf_1ms_base行の消失
+    issues: []
+    result: OK
+  - 'no': =A89+1
+    folder: tmp
+    file: after_csv_data_tsync_PlusBA
+    diff_type: pf_1ms_mid行の消失
+    issues: []
+    result: OK
+  - 'no': =A90+1
+    folder: tmp
+    file: after_csv_data_tsync_PlusBA
+    diff_type: mid行の時刻値変化
+    issues: []
+    result: OK
+  - 'no': =A91+1
+    folder: '-'
+    file: processing_time_result.csv
+    diff_type: TaskIDの追加
+    issues: []
+    result: OK
+  - 'no': =A92+1
+    folder: '-'
+    file: schedule_result.csv
+    diff_type: id/nameの変化
+    issues: []
+    result: OK
+  - 'no': =A93+1
+    folder: '-'
+    file: schedule_result.csv
+    diff_type: id/nameの変化
+    issues: []
+    result: OK
+  - 'no': =A94+1
+    folder: '-'
+    file: schedule_result.csv
+    diff_type: id/nameの変化
+    issues: []
+    result: OK
+  - 'no': =A95+1
+    folder: '-'
+    file: schedule_result.csv
+    diff_type: etcの変化
+    issues: []
+    result: OK
+  - 'no': =A96+1
+    folder: '-'
+    file: schedule_result_fail_list.csv
+    diff_type: 列ヘッダの変化
+    issues: []
+    result: OK
+  ng_count: 0
+  gate:
+    result: OK
+    detail: 全42エントリ正確
+phase5_meta_consistency:
+  issues: []
+  gate:
+    result: OK
+    detail: メタ情報整合性OK

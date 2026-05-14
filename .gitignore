@@ -1,0 +1,14 @@
+# 解析データ（大容量・顧客データのため除外）
+input/
+
+# Windows Zone.Identifier
+*.Zone.Identifier
+*:Zone.Identifier
+
+# Python キャッシュ
+__pycache__/
+*.pyc
+*.pyo
+
+# エディタ
+.vscode/
