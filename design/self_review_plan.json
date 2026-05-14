@@ -1,12 +1,14 @@
 {
   "meta": {
     "title": "verify_diff.py 変更計画・仕様書 セルフレビュー計画・結果",
-    "version": "1.0",
+    "version": "2.0",
     "review_date": "2026-05-14",
+    "review_phase2_date": "2026-05-14",
     "target_documents": [
       "design/change_plan.json",
       "design/verify_diff_spec.json"
     ],
+    "target_implementation": "scripts/verify_diff.py",
     "reviewer": "self",
     "status": "completed"
   },
@@ -112,5 +114,52 @@
     {"id": "F-6", "severity": "MEDIUM", "status": "resolved", "resolved_in": "design/verify_diff_spec.json"}
   ],
 
-  "next_step": "test/test_spec.json に基づきテスト実施（CHG-1〜CHG-3 実装後）"
+  "implementation_review": {
+    "review_date": "2026-05-14",
+    "target": "scripts/verify_diff.py",
+    "method": "全関数インベントリ取得 → チャンク読込み → OK証拠表作成",
+    "function_inventory": [
+      "L46  files_differ", "L52  image_list", "L58  read_lines",
+      "L63  ok", "L67  ng", "L71  warn",
+      "L78  load_excel_entries", "L105 phase1_file_inventory",
+      "L193 detect_csv_diff_types", "L232 phase2_csv_diffs",
+      "L326 phase3_image_diffs", "L400 phase4_entry_accuracy",
+      "L463 phase5_meta_consistency", "L480 evaluate_quality_gates",
+      "L499 _dir_path", "L507 _xlsx_path", "L517 main"
+    ],
+    "ok_evidence": [
+      {"fn": "files_differ",            "line": 46,  "fact": "read_bytes() 比較のみ、subprocess 参照なし",                        "result": "OK"},
+      {"fn": "load_excel_entries",       "line": 78,  "fact": "(xlsx, project, variant) 引数受け渡し、グローバル参照なし",           "result": "OK"},
+      {"fn": "phase1_file_inventory",    "line": 105, "fact": "(entries, old_dir, new_dir) — files_differ(old_dir/rel, new_dir/rel)", "result": "OK"},
+      {"fn": "detect_csv_diff_types",    "line": 193, "fact": "(rel_path, old_dir, new_dir) — old_dir/rel_path, new_dir/rel_path",   "result": "OK"},
+      {"fn": "phase2_csv_diffs",         "line": 232, "fact": "detect_csv_diff_types(rel, old_dir, new_dir) 呼び出し正しい",         "result": "OK"},
+      {"fn": "phase3_image_diffs",       "line": 326, "fact": "image_list(old_dir/gdir/sub), image_list(new_dir/gdir/sub)",          "result": "OK"},
+      {"fn": "phase4_entry_accuracy",    "line": 400, "fact": "old_dir/new_dir 引数受け渡し正しい",                                  "result": "OK"},
+      {"fn": "phase5_meta_consistency",  "line": 463, "fact": "(entries, project, variant) — PROJECT/VARIANT グローバル参照なし、LINK_TEXT 定数のまま(F-5正しい)", "result": "OK"},
+      {"fn": "_dir_path",                "line": 499, "fact": "is_dir() チェック、F-6対応",                                          "result": "OK"},
+      {"fn": "_xlsx_path",               "line": 507, "fact": "exists() + suffix==.xlsx チェック、F-6対応",                          "result": "OK"},
+      {"fn": "main",                     "line": 517, "fact": "argparse 全7引数・sys.exit(0/1)・print 文汎用化 — 旧 _default_base(L527)は未使用のためNG→修正済み", "result": "OK (修正後)"}
+    ],
+    "findings": [
+      {
+        "id": "F-7",
+        "severity": "LOW",
+        "line": 527,
+        "description": "_default_base = Path(__file__).parent.parent が main() 内で定義されていたが、L534 の base で再定義されており未使用だった",
+        "resolution": "L527 の _default_base 行を削除",
+        "status": "resolved",
+        "commit": "fix: main() の未使用変数 _default_base を削除（セルフレビュー指摘）"
+      }
+    ],
+    "regression_test": {
+      "tc_id": "TC-1",
+      "command": "python3 scripts/verify_diff.py --project ver1 --variant m02 --old <OLD> --new <NEW> --xlsx <XLSX>",
+      "result": "PASS",
+      "exit_code": 0,
+      "qg_results": {"QG-1": "PASS", "QG-2": "PASS", "QG-3": "PASS", "QG-4": "PASS"}
+    },
+    "overall": "PASS"
+  },
+
+  "next_step": "他バリアント（ver1/b01, ver1/m01, ver2/*, ver2.1/*）の差分抽出・検証に着手"
 }
