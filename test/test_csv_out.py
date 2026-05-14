@@ -215,3 +215,70 @@ def test_csv_empty_entries(tmp_path):
     with open(out, encoding="utf-8-sig", newline="") as f:
         rows = list(csv.DictReader(f))
     assert rows == [], "データ行は 0 件"
+
+
+# ─────────────────────────────────────────
+# TC-CSV-7: 出力先ディレクトリ不在時は FileNotFoundError
+# ─────────────────────────────────────────
+
+def test_csv_directory_not_found(tmp_path):
+    """出力先ディレクトリが存在しない場合は FileNotFoundError が発生すること"""
+    nonexistent = tmp_path / "no_such_dir" / "out.csv"
+    with pytest.raises(FileNotFoundError):
+        write_to_csv(nonexistent, "ver1", "m02", SAMPLE_ENTRIES)
+
+
+# ─────────────────────────────────────────
+# TC-CSV-8: --csv-out 使用時でも FATAL(exit=2) が発生すること
+# ─────────────────────────────────────────
+
+def test_csv_out_fatal_on_undetected(tmp_path, monkeypatch):
+    """差分ありなのにエントリ 0 件のファイルがある場合、--csv-out 時でも exit=2(FATAL) で終了すること"""
+    import openpyxl
+    from extract_and_write_diff import main
+
+    old_dir = tmp_path / "old"
+    new_dir = tmp_path / "new"
+    old_dir.mkdir()
+    new_dir.mkdir()
+
+    # input_info.txt: 内容が異なる（差分あり）→ 0 件になる状況を作る
+    # ここでは extract_all をモックして undetected を強制的に発生させる
+    import extract_and_write_diff as mod
+    original_extract_all = mod.extract_all
+
+    def mock_extract_all(old, new):
+        entries, stats = original_extract_all(old, new)
+        # 差分ありなのに 0 件のファイルがあったと見なす
+        stats["total_differing"] = 1
+        stats["detected"] = 0
+        stats["undetected"] = ["fake_file.csv"]
+        return entries, stats
+
+    monkeypatch.setattr(mod, "extract_all", mock_extract_all)
+
+    xlsx = tmp_path / "dummy.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Output差分"
+    wb.save(xlsx)
+
+    csv_out = tmp_path / "out.csv"
+
+    monkeypatch.setattr(
+        sys, "argv",
+        [
+            "extract_and_write_diff.py",
+            "--project", "ver1",
+            "--variant", "m02",
+            "--old", str(old_dir),
+            "--new", str(new_dir),
+            "--xlsx", str(xlsx),
+            "--csv-out", str(csv_out),
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+    assert exc_info.value.code == 2, "--csv-out 時でも FATAL は exit=2 であること"
+    assert not csv_out.exists(), "FATAL 終了時は CSV が出力されないこと"
