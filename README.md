@@ -24,9 +24,13 @@ scripts/
 
 旧解析結果フォルダと新解析結果フォルダを比較し、差分エントリを自動抽出して Excel の『Output 差分』シートに転記します。
 
+→ **詳細マニュアル: [docs/extract_and_write_diff_manual.adoc](docs/extract_and_write_diff_manual.adoc)**
+
 ### `verify_diff.py`
 
 Excel の『Output 差分』シートに記載された差分エントリを自動検証し、品質ゲート（QG）の総合判定を YAML レポートとして出力します。
+
+→ **詳細マニュアル: [docs/verify_diff_manual.adoc](docs/verify_diff_manual.adoc)**
 
 **使い方:**
 
