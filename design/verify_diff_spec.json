@@ -1,7 +1,7 @@
 {
   "tool": {
     "name": "verify_diff",
-    "script": "scripts/verify_m02_diff.py",
+    "script": "scripts/verify_diff.py",
     "description": "ExcelのOutput差分シートに記載された差分エントリを自動検証し、品質ゲート判定結果をYAMLレポートとして出力するツール"
   },
 
