@@ -1,0 +1,194 @@
+{
+  "meta": {
+    "created_date": "2026-05-14",
+    "revised_date": "2026-05-14",
+    "basis": [
+      "test/spec_review_report.yaml",
+      "design/verify_diff_spec.json"
+    ],
+    "self_review_findings": [
+      {
+        "id": "F-1",
+        "severity": "HIGH",
+        "location": "CHG-1.affected_functions",
+        "description": "detect_csv_diff_types (L208-209) が OLD/NEW をモジュールグローバルから直接参照しているが affected_functions に未記載",
+        "resolution": "detect_csv_diff_types を affected_functions に追加し (rel_path, old_dir, new_dir) シグネチャ変更を明記"
+      },
+      {
+        "id": "F-2",
+        "severity": "MEDIUM",
+        "location": "CHG-1.affected_functions / files_differ コメント",
+        "description": "files_differ は既に (path_old, path_new) の引数形式で定義されておりグローバル参照なし。「OLD/NEW を除去（引数に変更）」コメントが誤り",
+        "resolution": "files_differ を affected_functions から除外（関数本体の変更なし）"
+      },
+      {
+        "id": "F-3",
+        "severity": "HIGH",
+        "location": "CHG-1.what",
+        "description": "main() から sys.exit(0/1) を呼び出す処理が what[] に未記載。exit_codes 仕様（design/verify_diff_spec.json > cli.exit_codes）を満たすために必須",
+        "resolution": "what[] に sys.exit(0 if overall=='PASS' else 1) 追加を明記"
+      },
+      {
+        "id": "F-4",
+        "severity": "MEDIUM",
+        "location": "CHG-1.what / main()",
+        "description": "main() L512 の print 文「=== ver1 m02 セルフレビュー開始 ===」がハードコード。汎用化が what[] に未記載",
+        "resolution": "what[] に print 文の f-string 汎用化（f'=== {project} {variant} セルフレビュー開始 ==='）を追加"
+      },
+      {
+        "id": "F-5",
+        "severity": "MEDIUM",
+        "location": "CHG-1.affected_functions / phase5_meta_consistency コメント",
+        "description": "LINK_TEXT は全9バリアント共通の定数（同一Excelファイルのハイパーリンクテキスト）であり CLI 引数化不要。誤ってパラメータ化対象に記載",
+        "resolution": "phase5_meta_consistency の変更説明から LINK_TEXT を除去し「PROJECT/VARIANT のみパラメータ化」と明記"
+      },
+      {
+        "id": "F-6",
+        "severity": "MEDIUM",
+        "location": "design/verify_diff_spec.json / cli.arguments",
+        "description": "--old/--new はディレクトリ存在チェック、--xlsx は .xlsx 拡張子付きファイル存在チェックの入力バリデーション仕様が spec に未記載",
+        "resolution": "verify_diff_spec.json の cli.arguments 各エントリに validation フィールドを追加"
+      }
+    ]
+  },
+
+  "changes": [
+    {
+      "id": "CHG-1",
+      "title": "verify_diff.py: CLI引数化（RQ-10対応）",
+      "priority": 1,
+      "status": "planned",
+      "target_file": "scripts/verify_diff.py",
+      "basis": "RQ-10 / ISSUE-V-1 / ISSUE-V-2 / F-1 / F-3 / F-4 / F-5",
+      "spec_ref": "design/verify_diff_spec.json > cli",
+      "what": [
+        "モジュール先頭のグローバル変数 (BASE/OLD/NEW/XLSX/REPORT_OUT/PROJECT/VARIANT) を削除",
+        "argparse に --project / --variant / --old / --new / --xlsx / --report-out / --plan を追加",
+        "--old / --new: ディレクトリ存在チェック付き argparse type 関数でバリデーション（F-6対応）",
+        "--xlsx: .xlsx ファイル存在チェック付き argparse type 関数でバリデーション（F-6対応）",
+        "--report-out のデフォルト: Path(__file__).parent.parent / 'test' / f'verify_report_{variant}.yaml'",
+        "--plan のデフォルト: Path(__file__).parent.parent / 'test' / f'review_plan_{variant}.yaml'",
+        "detect_csv_diff_types(rel_path) → detect_csv_diff_types(rel_path, old_dir, new_dir) にシグネチャ変更（F-1対応）",
+        "load_excel_entries・phase1〜phase5 の全関数: グローバル変数参照を引数受け渡しに変更",
+        "docstring を汎用ツール説明に更新（ISSUE-V-1）",
+        "REPORT_OUT / plan_path のファイル名を {variant} 動的生成に変更（ISSUE-V-2）",
+        "main() の print 文「=== ver1 m02 セルフレビュー開始 ===」を f'=== {project} {variant} セルフレビュー開始 ===' に変更（F-4対応）",
+        "全QG PASS なら sys.exit(0)、いずれか FAIL なら sys.exit(1) で終了（F-3対応）"
+      ],
+      "interface_after": {
+        "command": "python3 scripts/verify_diff.py",
+        "required_args": [
+          "--project <str>       例: ver1, ver2, ver2.1",
+          "--variant <str>       例: m02, b01, m01",
+          "--old <dir>           旧解析結果ディレクトリ（存在チェックあり）",
+          "--new <dir>           新解析結果ディレクトリ（存在チェックあり）",
+          "--xlsx <file.xlsx>    Output差分シートを持つExcelファイル（存在・拡張子チェックあり）"
+        ],
+        "optional_args": [
+          "--report-out <path>   デフォルト: <script>/../test/verify_report_{variant}.yaml",
+          "--plan <path>         デフォルト: <script>/../test/review_plan_{variant}.yaml  ※ファイル不在時スキップ"
+        ],
+        "exit_codes": {
+          "0": "全QG PASS",
+          "1": "いずれかのQG FAIL",
+          "2": "引数エラー（argparse デフォルト動作）"
+        }
+      },
+      "affected_functions": [
+        {
+          "name": "load_excel_entries",
+          "change": "XLSX/PROJECT/VARIANT をパラメータ化: (xlsx: Path, project: str, variant: str)"
+        },
+        {
+          "name": "detect_csv_diff_types",
+          "change": "OLD/NEW をパラメータ化: (rel_path: str, old_dir: Path, new_dir: Path)  ← F-1対応"
+        },
+        {
+          "name": "phase1_file_inventory",
+          "change": "OLD/NEW をパラメータ化: (entries, old_dir: Path, new_dir: Path)"
+        },
+        {
+          "name": "phase2_csv_diffs",
+          "change": "OLD/NEW をパラメータ化: (entries, old_dir: Path, new_dir: Path)"
+        },
+        {
+          "name": "phase3_image_diffs",
+          "change": "OLD/NEW をパラメータ化: (entries, old_dir: Path, new_dir: Path)"
+        },
+        {
+          "name": "phase4_entry_accuracy",
+          "change": "OLD/NEW をパラメータ化: (entries, old_dir: Path, new_dir: Path)"
+        },
+        {
+          "name": "phase5_meta_consistency",
+          "change": "PROJECT/VARIANT のみパラメータ化: (entries, project: str, variant: str)  ※LINK_TEXT は定数のまま（F-5対応）"
+        },
+        {
+          "name": "main",
+          "change": "argparse 追加・各フェーズへの引数渡し・sys.exit 追加・print 文汎用化"
+        }
+      ],
+      "backward_compatibility": {
+        "note": "引数が必須になるため既存の無引数呼び出しは動作しなくなる",
+        "mitigation": "ver1/m02 は test/verify_report_m02.yaml で証跡済み"
+      }
+    },
+    {
+      "id": "CHG-2",
+      "title": "verify_diff.py: files_differ() のOS依存解消（ISSUE-V-3）",
+      "priority": 2,
+      "status": "planned",
+      "target_file": "scripts/verify_diff.py",
+      "basis": "ISSUE-V-3 / F-2",
+      "what": [
+        "subprocess.run(['diff', ...]) を廃止",
+        "path_old.read_bytes() != path_new.read_bytes() に置き換え",
+        "import subprocess を削除"
+      ],
+      "before": "result = subprocess.run([\"diff\", \"-q\", str(path_old), str(path_new)], capture_output=True)\nreturn result.returncode != 0",
+      "after": "return path_old.read_bytes() != path_new.read_bytes()",
+      "note": "files_differ 関数本体のみ変更。シグネチャ変更なし（F-2: affected_functions から除外済み）",
+      "commit": "CHG-1 と同一コミットで対応"
+    },
+    {
+      "id": "CHG-3",
+      "title": "verify_diff.py: 不要な import os の削除（ISSUE-V-4）",
+      "priority": 3,
+      "status": "planned",
+      "target_file": "scripts/verify_diff.py",
+      "basis": "ISSUE-V-4",
+      "what": [
+        "L8 の 'import os' を削除"
+      ],
+      "commit": "CHG-1/CHG-2 と同一コミットで対応"
+    }
+  ],
+
+  "implementation_order": {
+    "step_1": {
+      "changes": ["CHG-1", "CHG-2", "CHG-3"],
+      "description": "verify_diff.py の修正（1コミットで一括対応）",
+      "verification_command": "python3 scripts/verify_diff.py --project ver1 --variant m02 --old <OLD_PATH> --new <NEW_PATH> --xlsx <XLSX_PATH>",
+      "expected": "全QG PASS, exit code 0, test/verify_report_m02.yaml 生成"
+    }
+  },
+
+  "no_change": [
+    {
+      "target": "scripts/extract_and_write_diff.py",
+      "reason": "全RQ PASS。変更不要"
+    },
+    {
+      "target": "design/extract_and_write_diff_spec.json",
+      "reason": "変更なし"
+    },
+    {
+      "target": "test/review_plan_m02.yaml",
+      "reason": "ver1/m02 の証跡ファイル。CHG-1 後は {variant} 動的命名で新規生成されるため現状維持"
+    },
+    {
+      "target": "test/verify_report_m02.yaml",
+      "reason": "ver1/m02 の証跡ファイル。CHG-1 後は {variant} 動的命名で新規生成されるため現状維持"
+    }
+  ]
+}

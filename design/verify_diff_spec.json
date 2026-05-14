@@ -62,17 +62,20 @@
       "--old": {
         "required": true,
         "type": "path",
-        "description": "旧解析結果ディレクトリ（②過去解析済み結果）"
+        "description": "旧解析結果ディレクトリ（②過去解析済み結果）",
+        "validation": "Path が存在し is_dir() == True であること。違反時は argparse error で終了コード 2"
       },
       "--new": {
         "required": true,
         "type": "path",
-        "description": "新解析結果ディレクトリ（①ver3ツール再解析結果）"
+        "description": "新解析結果ディレクトリ（①ver3ツール再解析結果）",
+        "validation": "Path が存在し is_dir() == True であること。違反時は argparse error で終了コード 2"
       },
       "--xlsx": {
         "required": true,
         "type": "path",
-        "description": "Output差分シートを持つExcelファイルパス"
+        "description": "Output差分シートを持つExcelファイルパス",
+        "validation": "Path が存在し suffix == '.xlsx' であること。違反時は argparse error で終了コード 2"
       },
       "--report-out": {
         "required": false,

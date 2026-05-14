@@ -1,0 +1,116 @@
+{
+  "meta": {
+    "title": "verify_diff.py 変更計画・仕様書 セルフレビュー計画・結果",
+    "version": "1.0",
+    "review_date": "2026-05-14",
+    "target_documents": [
+      "design/change_plan.json",
+      "design/verify_diff_spec.json"
+    ],
+    "reviewer": "self",
+    "status": "completed"
+  },
+
+  "criteria": [
+    {
+      "id": "CR-1",
+      "title": "affected_functions 網羅性",
+      "severity": "HIGH",
+      "description": "コード上でグローバル変数（OLD/NEW/PROJECT/VARIANT/XLSX/LINK_TEXT）を参照する全関数が change_plan.json > CHG-1.affected_functions に含まれること",
+      "verification_method": "grep 'OLD\\|NEW\\|XLSX\\|PROJECT\\|VARIANT\\|LINK_TEXT' scripts/verify_diff.py で行番号付き出力を取得し、affected_functions の各エントリと突き合わせる",
+      "pass_condition": "グローバル参照のある全関数が affected_functions に列挙されており、参照のない関数が誤記載されていないこと"
+    },
+    {
+      "id": "CR-2",
+      "title": "what[] 完全性",
+      "severity": "HIGH",
+      "description": "以下の全変更ポイントが CHG-1.what[] に記載されていること: (1)グローバル変数削除, (2)argparse 追加, (3)入力バリデーション, (4)detect_csv_diff_types シグネチャ変更, (5)全関数の引数受け渡し変更, (6)sys.exit 追加, (7)main() print 文汎用化, (8)docstring 汎用化",
+      "pass_condition": "上記8点が what[] に漏れなく記載されていること"
+    },
+    {
+      "id": "CR-3",
+      "title": "interface_after と spec.cli の整合性",
+      "severity": "MEDIUM",
+      "description": "CHG-1.interface_after の引数定義が design/verify_diff_spec.json > cli.arguments と完全一致すること",
+      "verification_method": "両ファイルの引数名 (--project/--variant/--old/--new/--xlsx/--report-out/--plan)・required 区分・default_rule を突き合わせる",
+      "pass_condition": "引数名・required・default_rule が全7件で一致すること"
+    },
+    {
+      "id": "CR-4",
+      "title": "CHG-2 コード正確性",
+      "severity": "MEDIUM",
+      "description": "CHG-2.after のコードが正しいこと。files_differ のシグネチャ変更がないこと",
+      "pass_condition": "after: 'return path_old.read_bytes() != path_new.read_bytes()' かつシグネチャ (path_old, path_new) は変更なし"
+    },
+    {
+      "id": "CR-5",
+      "title": "入力バリデーション仕様の存在",
+      "severity": "MEDIUM",
+      "description": "--old/--new はディレクトリ存在チェック、--xlsx は .xlsx ファイル存在チェックの仕様が verify_diff_spec.json > cli.arguments に記載されていること",
+      "pass_condition": "--old/--new/--xlsx それぞれに validation フィールドが存在すること"
+    }
+  ],
+
+  "quality_gates": {
+    "QG-SR-1": {
+      "title": "affected_functions 網羅性",
+      "criteria_ref": "CR-1",
+      "severity": "HIGH",
+      "pass_condition": "F-1（detect_csv_diff_types 追加）・F-2（files_differ 除外）が change_plan.json に反映されていること",
+      "result": "PASS",
+      "evidence": [
+        "detect_csv_diff_types が affected_functions に追加済み（L208-209 の OLD/NEW 参照対応）",
+        "files_differ はグローバル参照なし（既に path_old/path_new 引数形式）のため除外済み"
+      ]
+    },
+    "QG-SR-2": {
+      "title": "what[] 完全性",
+      "criteria_ref": "CR-2",
+      "severity": "HIGH",
+      "pass_condition": "F-3（sys.exit）・F-4（print 文汎用化）・F-6（バリデーション）が what[] に反映されていること",
+      "result": "PASS",
+      "evidence": [
+        "sys.exit(0 if overall=='PASS' else 1) を what[] に追記済み（F-3対応）",
+        "main() print 文の f-string 汎用化を what[] に追記済み（F-4対応）",
+        "--old/--new/--xlsx の入力バリデーション追加を what[] に追記済み（F-6対応）"
+      ]
+    },
+    "QG-SR-3": {
+      "title": "interface_after と spec.cli の整合性",
+      "criteria_ref": "CR-3",
+      "severity": "MEDIUM",
+      "pass_condition": "引数名・required・default_rule が全7件で一致",
+      "result": "PASS",
+      "evidence": [
+        "interface_after の required_args 5件 = spec.cli の required:true 5件",
+        "interface_after の optional_args 2件 = spec.cli の required:false 2件",
+        "exit_codes に 0/1/2 の3種類を明記"
+      ]
+    },
+    "QG-SR-4": {
+      "title": "入力バリデーション仕様の存在",
+      "criteria_ref": "CR-5",
+      "severity": "MEDIUM",
+      "pass_condition": "--old/--new/--xlsx に validation フィールドが存在すること",
+      "result": "PASS",
+      "evidence": [
+        "verify_diff_spec.json の --old に validation: 'is_dir() == True' 追加済み",
+        "verify_diff_spec.json の --new に validation: 'is_dir() == True' 追加済み",
+        "verify_diff_spec.json の --xlsx に validation: 'suffix=.xlsx かつ存在' 追加済み"
+      ]
+    }
+  },
+
+  "overall": "PASS",
+
+  "findings_summary": [
+    {"id": "F-1", "severity": "HIGH",   "status": "resolved", "resolved_in": "design/change_plan.json"},
+    {"id": "F-2", "severity": "MEDIUM", "status": "resolved", "resolved_in": "design/change_plan.json"},
+    {"id": "F-3", "severity": "HIGH",   "status": "resolved", "resolved_in": "design/change_plan.json"},
+    {"id": "F-4", "severity": "MEDIUM", "status": "resolved", "resolved_in": "design/change_plan.json"},
+    {"id": "F-5", "severity": "MEDIUM", "status": "resolved", "resolved_in": "design/change_plan.json"},
+    {"id": "F-6", "severity": "MEDIUM", "status": "resolved", "resolved_in": "design/verify_diff_spec.json"}
+  ],
+
+  "next_step": "test/test_spec.json に基づきテスト実施（CHG-1〜CHG-3 実装後）"
+}

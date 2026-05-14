@@ -1,0 +1,167 @@
+{
+  "meta": {
+    "title": "verify_diff.py テスト仕様書",
+    "version": "1.0",
+    "created_date": "2026-05-14",
+    "target": "scripts/verify_diff.py",
+    "target_changes": ["CHG-1", "CHG-2", "CHG-3"],
+    "spec_ref": "design/verify_diff_spec.json",
+    "plan_ref": "design/change_plan.json",
+    "test_runner": "手動実行（pytest は使用しない）",
+    "preconditions": [
+      "pyenv shell 3.13.12 適用済み",
+      "openpyxl / pyyaml インストール済み",
+      "work/format-change/input/ に ver1/m02 の旧新データが存在すること"
+    ]
+  },
+
+  "test_data": {
+    "OLD_PATH": "work/format-change/input/scheduling_requirement_check_analysis_result",
+    "NEW_PATH": "work/format-change/input/ver1_m02_AP_再解析結果/output",
+    "XLSX_PATH": "work/format-change/input/過去プロジェクト(ver1_ver2_ver2.1)の要件ファイルフォーマット変更.xlsx",
+    "BASE": "/home/y-shinohara/adas"
+  },
+
+  "quality_gates": {
+    "QG-T-1": {
+      "title": "正常系 全QG PASS",
+      "pass_condition": "TC-1 PASS"
+    },
+    "QG-T-2": {
+      "title": "引数エラー検出",
+      "pass_condition": "TC-2, TC-3, TC-4 PASS"
+    },
+    "QG-T-3": {
+      "title": "デフォルトパス動作",
+      "pass_condition": "TC-5, TC-6 PASS"
+    },
+    "QG-T-4": {
+      "title": "コード品質（CHG-2/CHG-3）",
+      "pass_condition": "TC-7, TC-8, TC-9 PASS"
+    }
+  },
+
+  "test_cases": [
+    {
+      "id": "TC-1",
+      "title": "正常系 – ver1/m02 回帰テスト",
+      "category": "機能",
+      "target_change": "CHG-1",
+      "qg_ref": "QG-T-1",
+      "command": "python3 scripts/verify_diff.py --project ver1 --variant m02 --old <OLD_PATH> --new <NEW_PATH> --xlsx <XLSX_PATH>",
+      "expected": {
+        "exit_code": 0,
+        "stdout_contains": ["✅ QG-1: PASS", "✅ QG-2: PASS", "✅ QG-4: PASS", "総合判定: ✅ PASS"],
+        "files_created": ["test/verify_report_m02.yaml"],
+        "file_updated": ["test/review_plan_m02.yaml"]
+      },
+      "note": "CHG-1 以前の verify_report_m02.yaml と内容が実質的に同一であることを目視確認する"
+    },
+    {
+      "id": "TC-2",
+      "title": "必須引数省略 – --project 欠落",
+      "category": "引数バリデーション",
+      "target_change": "CHG-1",
+      "qg_ref": "QG-T-2",
+      "command": "python3 scripts/verify_diff.py --variant m02 --old <OLD_PATH> --new <NEW_PATH> --xlsx <XLSX_PATH>",
+      "expected": {
+        "exit_code": 2,
+        "stderr_contains": ["required", "--project"]
+      }
+    },
+    {
+      "id": "TC-3",
+      "title": "必須引数省略 – --xlsx 欠落",
+      "category": "引数バリデーション",
+      "target_change": "CHG-1",
+      "qg_ref": "QG-T-2",
+      "command": "python3 scripts/verify_diff.py --project ver1 --variant m02 --old <OLD_PATH> --new <NEW_PATH>",
+      "expected": {
+        "exit_code": 2,
+        "stderr_contains": ["required", "--xlsx"]
+      }
+    },
+    {
+      "id": "TC-4",
+      "title": "存在しないディレクトリを --old に指定",
+      "category": "入力バリデーション",
+      "target_change": "CHG-1 (F-6)",
+      "qg_ref": "QG-T-2",
+      "command": "python3 scripts/verify_diff.py --project ver1 --variant m02 --old /nonexistent/path --new <NEW_PATH> --xlsx <XLSX_PATH>",
+      "expected": {
+        "exit_code": 2,
+        "stderr_contains": ["error"]
+      },
+      "note": "argparse の type 関数内でチェックし error() を呼び出すことを確認"
+    },
+    {
+      "id": "TC-5",
+      "title": "--report-out 省略時のデフォルトパス確認",
+      "category": "デフォルト引数",
+      "target_change": "CHG-1",
+      "qg_ref": "QG-T-3",
+      "command": "python3 scripts/verify_diff.py --project ver1 --variant m02 --old <OLD_PATH> --new <NEW_PATH> --xlsx <XLSX_PATH>",
+      "expected": {
+        "exit_code": 0,
+        "files_created": ["test/verify_report_m02.yaml"],
+        "verification": "test/verify_report_m02.yaml が <scripts/../test/verify_report_m02.yaml> に生成されること"
+      }
+    },
+    {
+      "id": "TC-6",
+      "title": "--plan 省略かつ plan ファイル不在 → スキップして正常終了",
+      "category": "デフォルト引数",
+      "target_change": "CHG-1",
+      "qg_ref": "QG-T-3",
+      "setup": "test/review_plan_m02.yaml を一時的にリネームしてから実行",
+      "command": "python3 scripts/verify_diff.py --project ver1 --variant dummy --old <OLD_PATH> --new <NEW_PATH> --xlsx <XLSX_PATH>",
+      "expected": {
+        "exit_code_not": 99,
+        "note": "review_plan_dummy.yaml が存在しない場合、plan 更新ステップをスキップして exit_code 0 または 1 で終了すること"
+      },
+      "teardown": "一時リネームを元に戻す"
+    },
+    {
+      "id": "TC-7",
+      "title": "subprocess モジュール不使用の確認",
+      "category": "コード品質",
+      "target_change": "CHG-2",
+      "qg_ref": "QG-T-4",
+      "command": "grep -n 'import subprocess\\|subprocess.run' scripts/verify_diff.py",
+      "expected": {
+        "stdout": "",
+        "description": "出力が空（subprocess の import・呼び出しが存在しない）こと"
+      }
+    },
+    {
+      "id": "TC-8",
+      "title": "import os 不使用の確認",
+      "category": "コード品質",
+      "target_change": "CHG-3",
+      "qg_ref": "QG-T-4",
+      "command": "grep -n '^import os' scripts/verify_diff.py",
+      "expected": {
+        "stdout": "",
+        "description": "出力が空（import os が存在しない）こと"
+      }
+    },
+    {
+      "id": "TC-9",
+      "title": "docstring 汎用化の確認",
+      "category": "コード品質",
+      "target_change": "CHG-1 (ISSUE-V-1)",
+      "qg_ref": "QG-T-4",
+      "command": "head -8 scripts/verify_diff.py | grep 'ver1 m02'",
+      "expected": {
+        "stdout": "",
+        "description": "出力が空（docstring に 'ver1 m02' 固定文字列が存在しない）こと"
+      }
+    }
+  ],
+
+  "test_execution_record": {
+    "status": "not_started",
+    "executed_date": null,
+    "results": []
+  }
+}
