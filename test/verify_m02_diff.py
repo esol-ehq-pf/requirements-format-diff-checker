@@ -17,7 +17,7 @@ import yaml
 # ──────────────────────────────────────────
 # パス定義
 # ──────────────────────────────────────────
-BASE = Path(__file__).parent.parent.parent  # /home/y-shinohara/adas
+BASE = Path(__file__).parent.parent.parent.parent  # /home/y-shinohara/adas
 OLD = BASE / "work/format-change/input/scheduling_requirement_check_analysis_result"
 NEW = BASE / "work/format-change/input/ver1_m02_AP_再解析結果/output"
 XLSX = BASE / "work/format-change/input/過去プロジェクト(ver1_ver2_ver2.1)の要件ファイルフォーマット変更.xlsx"
