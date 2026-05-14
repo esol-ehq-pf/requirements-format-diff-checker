@@ -559,7 +559,7 @@ def main():
     print(f"\nレポート出力: {REPORT_OUT}")
 
     # 計画ファイルの実行ステータスを更新
-    plan_path = Path(__file__).parent / "review_plan_m02.yaml"
+    plan_path = Path(__file__).parent.parent / "test" / "review_plan_m02.yaml"
     if plan_path.exists():
         with open(plan_path, encoding="utf-8") as f:
             plan = yaml.safe_load(f)
