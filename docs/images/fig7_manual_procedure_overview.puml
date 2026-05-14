@@ -1,0 +1,40 @@
+@startuml fig7_manual_procedure_overview
+skinparam defaultFontName "Noto Sans CJK JP"
+skinparam defaultFontSize 11
+skinparam backgroundColor white
+skinparam ArrowColor #333333
+skinparam ActivityBorderColor #555555
+skinparam ActivityBackgroundColor #FFFFEE
+skinparam DecisionBackgroundColor #E8F4FF
+skinparam DecisionBorderColor #3399CC
+skinparam StartColor #228B22
+skinparam EndColor #CC2222
+
+start
+:旧解析結果フォルダ・新解析結果フォルダを用意;
+:差分管理 Excel を開く\n（Output差分シート）;
+
+:--- Step 1 ---\ninput_info.txt の比較\n→ 差分あれば 2 件を固定記入;
+
+:--- Step 2 ---\n4種グラフ画像ディレクトリの比較\n旧にあって新にない画像を確認\n→ 消失/リネームを記入;
+
+:--- Step 3 ---\nbefore/after_cpuload_requirements.csv の比較\n→ PF_window 追加・NodeName 変化を記入;
+
+:--- Step 4 ---\nbefore/after_requirements.csv の比較\n→ キー追加・各種名称変化を記入;
+
+:--- Step 5 ---\nbefore_budget.csv の比較\n→ 差分あれば 1 件を固定記入;
+
+:--- Step 6 ---\ninput_data_ba.csv / input_data_igr.csv の比較\n→ pf_1ms 消失・Node 順序入れ替わりを記入;
+
+:--- Step 7 ---\nbefore/after_csv_data_tsync_PlusBA.csv の比較\n→ pf_1ms 消失・時刻値変化を記入;
+
+:--- Step 8 ---\nprocessing_time_result.csv の比較\n→ PF_window 追加を記入;
+
+:--- Step 9 ---\nschedule_result.csv の比較\n→ id/name 変化・etc 変化を記入;
+
+:--- Step 10 ---\nschedule_result_fail_list.csv の比較\n→ 列ヘッダ変化を記入;
+
+:No 列（A列）を先頭から連番で記入;
+:Excel を保存;
+stop
+@enduml

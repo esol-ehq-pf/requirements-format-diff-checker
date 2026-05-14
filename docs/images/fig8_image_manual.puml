@@ -1,0 +1,28 @@
+@startuml fig8_image_manual
+skinparam defaultFontName "Noto Sans CJK JP"
+skinparam defaultFontSize 12
+skinparam backgroundColor white
+skinparam ArrowColor #333333
+skinparam ActivityBorderColor #555555
+skinparam ActivityBackgroundColor #FFFFEE
+skinparam DecisionBackgroundColor #E8F4FF
+skinparam DecisionBorderColor #3399CC
+skinparam StartColor #228B22
+skinparam EndColor #CC2222
+
+start
+:旧フォルダの画像ファイル名一覧を取得\n新フォルダの画像ファイル名一覧を取得;
+:削除ファイル = 旧にあって新にないファイル名を列挙;
+
+if (削除ファイルがあるか?) then (Yes)
+  :追加ファイル = 新にあって旧にないファイル名を列挙;
+  if (削除ファイル名と追加ファイル名が\n類似している（名前が大部分一致）か?) then (Yes — リネーム)
+    :差分概要: 画像差分\n旧値: タイトル{旧ファイル名ステム}\n新値: タイトル{新ファイル名ステム}に変化;
+  else (No — 消失)
+    :差分概要: ファイル消失\n旧値: {ファイル名} が存在する\n新値: {ファイル名} が存在しない;
+  endif
+else (No)
+  :記入なし;
+endif
+stop
+@enduml

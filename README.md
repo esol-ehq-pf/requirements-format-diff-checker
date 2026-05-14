@@ -24,7 +24,8 @@ scripts/
 
 旧解析結果フォルダと新解析結果フォルダを比較し、差分エントリを自動抽出して Excel の『Output 差分』シートに転記します。
 
-→ **詳細マニュアル: [docs/extract_and_write_diff_manual.adoc](docs/extract_and_write_diff_manual.adoc)**
+→ **詳細マニュアル: [docs/extract_and_write_diff_manual.adoc](docs/extract_and_write_diff_manual.adoc)** +
+→ **手動実施手順書: [docs/manual_procedure.adoc](docs/manual_procedure.adoc)**
 
 ### `verify_diff.py`
 

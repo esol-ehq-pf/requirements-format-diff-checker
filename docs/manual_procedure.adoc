@@ -1,0 +1,569 @@
+= Output差分シート 手動記入手順書
+:toc: left
+:toc-title: 目次
+:toclevels: 3
+:sectnums:
+:icons: font
+:imagesdir: images
+:source-highlighter: rouge
+:doctype: article
+:lang: ja
+
+== 概要
+
+本書は `extract_and_write_diff.py` が自動実施している差分抽出・Excel 記入処理を、 +
+**ツールが使用できない場合に手動で実施するための手順書**です。
+
+スクリプトは 10 種類のファイルを比較し、差分エントリを Excel の『Output 差分』シートに記入します。 +
+本書では各ファイルの比較方法・Excel への記入内容を 1 ステップずつ説明します。
+
+=== 前提条件
+
+* 旧解析結果フォルダ（以下「旧フォルダ」）と新解析結果フォルダ（以下「新フォルダ」）の両方が手元にあること
+* 差分管理 Excel（『Output 差分』シートを含む）が手元にあること
+* Excel の列構成は以下の通りであること
+
+[cols="1,3", options="header"]
+|===
+| 列 | 内容
+
+| A
+| No（連番）
+
+| B
+| フォルダ名（`-` / `tmp` / グラフディレクトリ名）
+
+| C
+| ファイル名
+
+| D
+| 差分概要
+
+| E
+| 旧値
+
+| F
+| 新値
+
+| G
+| リンク（固定値: `過去プロジェクト(ver1/ver2/ver2.1)の 要件ファイルフォーマット変更`）
+
+| H
+| プロジェクト名
+
+| I
+| バリアント名
+
+| J
+| 推定原因
+|===
+
+NOTE: 記入後は No 列（A 列）を先頭から連番で振り直してください。
+
+---
+
+== 全体手順フロー
+
+image::fig7_manual_procedure_overview.png[全体手順フロー,align="center"]
+
+---
+
+== Step 1: `input_info.txt` の比較
+
+=== 比較方法
+
+旧フォルダ直下の `input_info.txt` と新フォルダ直下の `input_info.txt` をテキストエディタや diff ツールで開き、 +
+内容が異なるかどうかを確認します。
+
+=== 記入ルール
+
+* **内容が同一** → 記入なし（スキップ）
+* **内容が異なる** → 以下の **2 件を必ず両方**記入します
+
+[cols="1,1,2,2,1,3", options="header"]
+|===
+| B（フォルダ） | C（ファイル名） | D（差分概要） | E（旧値） | F（新値） | J（推定原因）
+
+| `-`
+| `input_info.txt`
+| `入力ファイルの差分`
+| `-`
+| `要件チェックツール差分`
+| `ver3ツールを用いたことによる差分`
+
+| `-`
+| `input_info.txt`
+| `入力ファイルの差分`
+| `-`
+| `要件ファイル差分`
+| `ver3フォーマットを使用した要件ファイルに置き換わったことによる差分`
+|===
+
+---
+
+== Step 2: グラフ画像ディレクトリの比較
+
+=== 対象ディレクトリ（4 種 × PASS/FAIL = 計 8 組）
+
+* `processing_load_duration_graph/PASS` および `FAIL`
+* `Sequence_duration_graph/PASS` および `FAIL`
+* `SWC_budget_duration_graph/PASS` および `FAIL`
+* `WakeupInterval_graph/PASS` および `FAIL`
+
+=== 比較方法
+
+各サブフォルダについて、旧フォルダと新フォルダのファイル名一覧を比較します。
+
+image::fig8_image_manual.png[画像差分の判定方法,align="center"]
+
+=== 記入ルール
+
+**ケース A: ファイル消失（削除画像に類似した新画像がない場合）**
+
+[cols="1,2,2,3,3,1", options="header"]
+|===
+| B（フォルダ） | C（ファイル名） | D（差分概要） | E（旧値） | F（新値） | J（推定原因）
+
+| グラフディレクトリ名 +
+（例: `processing_load_duration_graph`）
+| 消失したファイル名 +
+（拡張子あり、例: `Node_A.png`）
+| `ファイル消失`
+| `{ファイル名} が存在する`
+| `{ファイル名} が存在しない`
+| （空白）
+|===
+
+**ケース B: リネーム（削除画像と類似した新画像がある場合）**
+
+ファイル名が大部分一致している場合（例: `NodeA_v1.png` → `NodeA_v2.png`）はリネームとして扱います。
+
+[cols="1,2,2,3,3,1", options="header"]
+|===
+| B（フォルダ） | C（ファイル名） | D（差分概要） | E（旧値） | F（新値） | J（推定原因）
+
+| グラフディレクトリ名
+| 旧ファイル名（拡張子あり）
+| `画像差分`
+| `タイトル{旧ファイル名の拡張子なし}`
+| `タイトル{新ファイル名の拡張子なし}に変化`
+| （空白）
+|===
+
+NOTE: 「類似している」かどうかの目安は「ファイル名の大部分（7 割以上）が共通している」です。 +
+判断が難しい場合は画像を実際に開いてグラフのタイトルを確認してください。
+
+---
+
+== Step 3: `before/after_cpuload_requirements.csv` の比較
+
+=== 対象ファイル
+
+旧/新フォルダの `temp/` サブディレクトリ内:
+
+* `before_cpuload_requirements.csv`
+* `after_cpuload_requirements.csv`
+
+=== 比較方法
+
+before と after それぞれについて、旧フォルダと新フォルダを比較します。 +
+CSV の内容が同一の場合は記入不要です。
+
+=== 記入ルール — `before_cpuload_requirements.csv`
+
+**パターン 1: 新 CSV に `PF_window` を含む DisplayName/NodeName が追加されている**
+
+[cols="1,3,2,1,2,3", options="header"]
+|===
+| B | C | D | E | F | J
+
+| `tmp`
+| `before_cpuload_requirements`
+| `TaskIDの追加`
+| `-`
+| `PF_window が追加`
+| `infsimyml のフォーマット変更(1ｰ③)に伴う変化点`
+|===
+
+**パターン 2: TaskID が同じ行の NodeName が変化している**
+
+同じ TaskID を持つ行を旧/新で照合し、NodeName の値が変わっていた場合に記入します。 +
+変化パターンの種類ごとに 1 件ずつ記入します。
+
+[cols="1,3,2,2,2,3", options="header"]
+|===
+| B | C | D | E | F | J
+
+| `tmp`
+| `before_cpuload_requirements`
+| `NodeNameの変化`
+| 旧 NodeName の値
+| 変化後の NodeName の値
+| `infsimyml のフォーマット変更(1ｰ①)に伴う変化点`
+|===
+
+=== 記入ルール — `after_cpuload_requirements.csv`
+
+**パターン: 新 CSV に `PF_window` を含む行が追加されている**
+
+[cols="1,3,2,1,2,3", options="header"]
+|===
+| B | C | D | E | F | J
+
+| `tmp`
+| `after_cpuload_requirements`
+| `TaskIDの追加`
+| `-`
+| `PF_window が追加`
+| `infsimyml のフォーマット変更(1ｰ③)に伴う変化点`
+|===
+
+---
+
+== Step 4: `before/after_requirements.csv` の比較
+
+=== 対象ファイル
+
+旧/新フォルダの `temp/` サブディレクトリ内:
+
+* `before_requirements.csv`
+* `after_requirements.csv`
+
+=== 比較方法
+
+before と after それぞれについて、旧フォルダと新フォルダを比較します。
+
+=== 記入ルール（共通）
+
+**パターン 1: 新 CSV に列（キー）が追加されている**
+
+新 CSV のヘッダ行に旧 CSV にない列名が存在する場合に記入します。
+
+[cols="1,3,2,1,3,3", options="header"]
+|===
+| B | C | D | E | F | J
+
+| `tmp`
+| ファイル名（拡張子なし）
+| `キーの追加`
+| `-`
+| `RequirementType: Fsync に対して Targetキーが追加`
+| `chksimyml のフォーマット変更(2ｰ②)に伴う変化点`
+|===
+
+**パターン 2: Sequence / Sender / Receiver / FirstTask / SecondTask 列の値が変化している**
+
+[cols="1,3,3,3,3,3", options="header"]
+|===
+| B | C | D | E | F | J
+
+| `tmp`
+| ファイル名（拡張子なし）
+| `Sequence/Sender/Receiver/FirstTask/SecondTaskの変化`
+| `chksimymlに記載のSequence/Sender/Receiver/FirstTask/SecondTask名`
+| `SWC名/Node名に統一`
+| `chksimyml のフォーマット変更(2ｰ①)に伴う変化点`
+|===
+
+**パターン 3: RequirementId 列の値が変化している**
+
+変化パターンの種類ごとに 1 件ずつ記入します。
+
+[cols="1,3,2,2,2,3", options="header"]
+|===
+| B | C | D | E | F | J
+
+| `tmp`
+| ファイル名（拡張子なし）
+| `RequirementIdの変化`
+| 旧 RequirementId の値
+| `{新 RequirementId の値}に変化`
+| `chksimyml のフォーマット変更(2ｰ③)に伴う変化点`
+|===
+
+**パターン 4: RequirementOwner 列の値が変化している**
+
+[cols="1,3,2,2,2,1", options="header"]
+|===
+| B | C | D | E | F | J
+
+| `tmp`
+| ファイル名（拡張子なし）
+| `RequirementOwnerの変化`
+| 旧 RequirementOwner の値
+| 新 RequirementOwner の値
+| （空白）
+|===
+
+---
+
+== Step 5: `before_budget.csv` の比較
+
+=== 対象ファイル
+
+旧/新フォルダの `temp/before_budget.csv`
+
+NOTE: `after_budget.csv` は差分が発生しないため比較不要です。
+
+=== 記入ルール
+
+* **内容が同一** → 記入なし（スキップ）
+* **内容が異なる** → 以下の **1 件を固定で**記入します
+
+[cols="1,2,2,3,3,3", options="header"]
+|===
+| B | C | D | E | F | J
+
+| `tmp`
+| `before_budget`
+| `TaskListの変化`
+| `budget.yamlに記載のTaskList`
+| `TaskListがNode名で統一`
+| `budget.yamlのフォーマット変更(4ｰ②)に伴う変化点`
+|===
+
+---
+
+== Step 6: `input_data_ba.csv` / `input_data_igr.csv` の比較
+
+=== 対象ファイル
+
+旧/新フォルダ直下:
+
+* `input_data_ba.csv`
+* `input_data_igr.csv`
+
+=== 比較方法
+
+2 ファイルそれぞれについて旧/新を比較します。内容が同一の場合は記入不要です。
+
+=== 記入ルール
+
+**パターン 1: `pf_1ms_base` を含む行が旧にあって新にない**
+
+[cols="1,3,2,1,3,1", options="header"]
+|===
+| B | C | D | E | F | J
+
+| `-`
+| ファイル名（例: `input_data_ba.csv`）
+| `pf_1ms_base行の消失`
+| `-`
+| `node=pf_1ms_base の行が消失`
+| （空白）
+|===
+
+**パターン 2: `pf_1ms_mid` を含む行が旧にあって新にない**
+
+[cols="1,3,2,1,3,1", options="header"]
+|===
+| B | C | D | E | F | J
+
+| `-`
+| ファイル名
+| `pf_1ms_mid行の消失`
+| `-`
+| `node=pf_1ms_mid の行が消失`
+| （空白）
+|===
+
+**パターン 3: pf_1ms を除いた行で `start_clock_ms` が同じなのに `node` 列の値が変わっている行がある**
+
+pf_1ms 系の行を除いた状態で、旧/新の同一行番号を比較し、`start_clock_ms` が一致しているのに `node` の値が異なる行数を数えます。
+
+[cols="1,3,2,1,3,1", options="header"]
+|===
+| B | C | D | E | F | J
+
+| `-`
+| ファイル名
+| `Nodeの順序入れ替わり`
+| `-`
+| `start_clock_msが同じnodeに対して，順序が入れ替わるケースあり({N}件)`
+| （空白）
+|===
+
+---
+
+== Step 7: `before/after_csv_data_tsync_PlusBA.csv` の比較
+
+=== 対象ファイル
+
+旧/新フォルダの `temp/` サブディレクトリ内:
+
+* `before_csv_data_tsync_PlusBA.csv`
+* `after_csv_data_tsync_PlusBA.csv`
+
+=== 記入ルール
+
+**パターン 1: `pf_1ms_base` を含む行が旧にあって新にない**
+
+[cols="1,3,2,1,3,1", options="header"]
+|===
+| B | C | D | E | F | J
+
+| `tmp`
+| ファイル名（拡張子なし）
+| `pf_1ms_base行の消失`
+| `-`
+| `node=pf_1ms_base の行が消失`
+| （空白）
+|===
+
+**パターン 2: `pf_1ms_mid` を含む行が旧にあって新にない**
+
+[cols="1,3,2,1,3,1", options="header"]
+|===
+| B | C | D | E | F | J
+
+| `tmp`
+| ファイル名（拡張子なし）
+| `pf_1ms_mid行の消失`
+| `-`
+| `node=pf_1ms_mid の行が消失`
+| （空白）
+|===
+
+**パターン 3: pf_1ms 以外の行に変化がある（時刻値の変化）**
+
+pf_1ms を含む行を除いた状態で旧/新を diff し、変化があった場合に記入します。
+
+[cols="1,3,2,1,3,3", options="header"]
+|===
+| B | C | D | E | F | J
+
+| `tmp`
+| ファイル名（拡張子なし）
+| `mid行の時刻値変化`
+| `-`
+| `mid 行の tsync 補正時刻値が変化`
+| `infsimyml のフォーマット変更(1ｰ③)に伴う変化点`
+|===
+
+---
+
+== Step 8: `processing_time_result.csv` の比較
+
+=== 対象ファイル
+
+旧/新フォルダ直下の `processing_time_result.csv`
+
+=== 記入ルール
+
+新 CSV に `PF_window` を含む行が追加されている場合に記入します。
+
+[cols="1,3,2,1,2,3", options="header"]
+|===
+| B | C | D | E | F | J
+
+| `-`
+| `processing_time_result.csv`
+| `TaskIDの追加`
+| `-`
+| `PF_windowが追加`
+| `infsimyml のフォーマット変更(1ｰ③)に伴う変化点`
+|===
+
+---
+
+== Step 9: `schedule_result.csv` の比較
+
+=== 対象ファイル
+
+旧/新フォルダ直下の `schedule_result.csv`
+
+=== 記入ルール
+
+**パターン 1: `id` 列または `name` 列の値が変化している**
+
+旧/新を同一行番号で比較し、`id` または `name` の値が異なる行を抽出します。 +
+末尾に `-NN`（数字）がついた名称は親名称が同じであれば **1 件にまとめます**。 +
+最初の 1 件にのみ推定原因を記入し、以降は空白にします。
+
+[cols="1,3,2,2,2,3", options="header"]
+|===
+| B | C | D | E | F | J
+
+| `-`
+| `schedule_result.csv`
+| `id/nameの変化`
+| 旧値（例: `VidDraw`）
+| 新値（例: `viddraw`）
+| `chksimyml のフォーマット変更(2ｰ③)に伴う変化点`（先頭 1 件のみ）
+|===
+
+**パターン 2: `etc` 列の値が変化している**
+
+[cols="1,3,2,3,3,3", options="header"]
+|===
+| B | C | D | E | F | J
+
+| `-`
+| `schedule_result.csv`
+| `etcの変化`
+| `chksimymlに記載のNode名称`
+| `SWC名/Node名に統一`
+| `chksimyml のフォーマット変更(2ｰ①)に伴う変化点`
+|===
+
+---
+
+== Step 10: `schedule_result_fail_list.csv` の比較
+
+=== 対象ファイル
+
+旧/新フォルダ直下の `schedule_result_fail_list.csv`
+
+=== 記入ルール
+
+1 行目（ヘッダ行）または 2 行目（サブヘッダ行）が旧/新で異なる場合に記入します。
+
+[cols="1,3,2,3,3,3", options="header"]
+|===
+| B | C | D | E | F | J
+
+| `-`
+| `schedule_result_fail_list.csv`
+| `列ヘッダの変化`
+| `chksimymlに記載のNode名称`
+| `SWC名/Node名に統一`
+| `chksimyml のフォーマット変更(2ｰ①)に伴う変化点`
+|===
+
+---
+
+== 記入後の確認
+
+=== No 列（A 列）の採番
+
+全エントリを記入し終えたら、A 列を 1 から連番で振り直します。 +
+同バリアントの既存エントリを削除してから追記した場合は、既存エントリの続番から採番します。
+
+=== verify_diff.py による品質ゲート検証
+
+手動記入後は `verify_diff.py` を実行して品質ゲートを通過することを確認してください。
+
+[source,bash]
+----
+python3 scripts/verify_diff.py \
+    --project <プロジェクト名> \
+    --variant <バリアント名> \
+    --old     <旧解析結果ディレクトリ> \
+    --new     <新解析結果ディレクトリ> \
+    --xlsx    <Excelファイルパス>
+----
+
+全 QG が PASS（exit=0）になれば記入完了です。 +
+FAIL になった場合は YAML レポートの該当フェーズを確認し、不足エントリや誤記入を修正してください。 +
+詳細は link:verify_diff_manual.adoc[verify_diff.py 詳細マニュアル] を参照してください。
+
+---
+
+== 注意事項
+
+* 本書に記載している差分パターン（`PF_window` 追加、`pf_1ms` 消失等）は **ver1/m02 で観測されたもの**です。 +
+  他バリアントでは異なるパターンが発生する可能性があります。その場合はパターンを追記してください。
+
+* 比較には Windows の「フォルダ比較」機能、WinMerge、`diff` コマンド等を利用できます。
+
+* 差分がないファイルは記入不要です。差分なしファイルを誤って記入すると `verify_diff.py` の QG-1 が FAIL になります。
