@@ -554,11 +554,22 @@ def extract_all(old_dir: Path, new_dir: Path) -> list[dict]:
 # ──────────────────────────────────────────
 
 def get_last_data_row(ws) -> int:
+    # A列は連番数式（=A{n}+1）が残存することがあるため B列以降にデータがある行のみを対象とする
     last = 3
     for row in ws.iter_rows(min_row=4):
-        if any(cell.value for cell in row):
+        if any(cell.value for cell in row[1:]):
             last = row[0].row
     return last
+
+
+def _delete_ghost_rows(ws) -> None:
+    """A列に数式が残るがB列以降が全て空の行（ゴースト行）を後ろから削除する"""
+    ghost = [
+        row[0].row for row in ws.iter_rows(min_row=4)
+        if row[0].value is not None and not any(cell.value for cell in row[1:])
+    ]
+    for r in reversed(ghost):
+        ws.delete_rows(r)
 
 
 def write_to_excel(xlsx_path: Path, project: str, variant: str,
@@ -576,6 +587,10 @@ def write_to_excel(xlsx_path: Path, project: str, variant: str,
         print(f"  既存エントリ {len(existing)} 件を上書きします（行 {existing[0]}〜{existing[-1]}）")
         for r in reversed(existing):
             ws.delete_rows(r)
+
+    # 削除後にA列数式のみ残ったゴースト行を除去する
+    if not dry_run:
+        _delete_ghost_rows(ws)
 
     last_row = get_last_data_row(ws)
     start_row = last_row + 1
