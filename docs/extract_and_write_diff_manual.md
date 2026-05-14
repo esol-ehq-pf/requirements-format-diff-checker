@@ -244,7 +244,7 @@ flowchart TD
 
 | Excel 列 | 内容 |
 |----------|------|
-| A | No（前行の A 列 +1 の数式） |
+| A | No（先頭エントリは固定値 `1`、以降は `=A{前行}+1` の Excel 数式） |
 | B | フォルダ名（`-` / `tmp` / グラフディレクトリ名） |
 | C | ファイル名 |
 | D | 差分概要（`ALLOWED_DIFF_TYPES` の値） |
@@ -255,7 +255,20 @@ flowchart TD
 | I | variant（`--variant` 引数値） |
 | J | 推定原因（`None` の場合は空白） |
 
-**既存エントリの扱い:** 同 project/variant の行が既に存在する場合、全行を削除してから末尾に追記します（上書き相当）。
+**既存エントリの上書き手順:**
+
+```mermaid
+flowchart TD
+    S1["step1: H列==project かつ I列==variant の行を\n後ろから delete_rows() で物理削除"]
+    S2["step2: _delete_ghost_rows()\nA列に数式のみ残った行（B列以降が全て空）を\n後ろから物理削除"]
+    S3["step3: get_last_data_row()\nB列以降にデータがある最終行を取得し\n次の行から新エントリを追記"]
+    S1 --> S2 --> S3
+```
+
+> **ゴースト行について:**  
+> `delete_rows()` で行を削除した後も A 列の `=A{n}+1` 数式だけが残る場合があります。  
+> step2 でこれを除去しないと `get_last_data_row()` が誤った最終行を返し、  
+> 新エントリが空白行の後に追記されるバグが発生します（BUG-1/BUG-2 として修正済み）。
 
 ---
 
