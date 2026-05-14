@@ -5,6 +5,23 @@
     "description": "ExcelのOutput差分シートに記載された差分エントリを自動検証し、品質ゲート判定結果をYAMLレポートとして出力するツール"
   },
 
+  "context": {
+    "purpose": "『Output差分』シートに記載された差分エントリが実際の差分を正確に網羅的に記録しているかを自動検証する",
+    "relation_to_extract_tool": "extract_and_write_diff.py の出力結果を検証する品質保証ツール。手動記入後の検証にも利用可"
+  },
+
+  "target_variants": [
+    { "project": "ver1",  "variant": "m02", "status": "実装済み" },
+    { "project": "ver1",  "variant": "b01", "status": "顧客提供待ち" },
+    { "project": "ver1",  "variant": "m01", "status": "顧客提供待ち" },
+    { "project": "ver2",  "variant": "b01", "status": "顧客提供待ち" },
+    { "project": "ver2",  "variant": "m01", "status": "顧客提供待ち" },
+    { "project": "ver2",  "variant": "m02", "status": "顧客提供待ち" },
+    { "project": "ver2.1", "variant": "b01", "status": "顧客提供待ち" },
+    { "project": "ver2.1", "variant": "m01", "status": "顧客提供待ち" },
+    { "project": "ver2.1", "variant": "m02", "status": "顧客提供待ち" }
+  ],
+
   "requirements": {
     "RQ-1": "Excelのプロジェクト・バリアントを絞り込み対象エントリを読み込むこと",
     "RQ-2": "差分ありファイルが全てExcelに記載されているか（網羅性）を確認すること",
@@ -14,11 +31,12 @@
     "RQ-6": "プロジェクト・バリアント・リンク列の整合性を確認すること",
     "RQ-7": "検証結果をYAMLレポートファイルに出力すること",
     "RQ-8": "品質ゲート（QG）の総合判定（PASS/FAIL）を出力すること",
-    "RQ-9": "レビュー計画YAMLファイルの実行ステータスを更新すること"
+    "RQ-9": "レビュー計画ファイルの実行ステータスを更新すること",
+    "RQ-10": "プロジェクト名・バリアント名・旧新ディレクトリ・ ExcelパスをCLI引数で指定でき、ver1/ver2/ver2.1 × b01/m01/m02 の全9バリアント全てに対応できること"
   },
 
   "hardcoded_config": {
-    "note": "現在のバージョンでは対象パスがハードコードされている。将来的にCLI引数化予定",
+    "note": "現在のバージョンでは対象パスがハードコードされている。RQ-10実装時にCLI引数化する",
     "project": "ver1",
     "variant": "m02",
     "old_dir": "work/format-change/input/scheduling_requirement_check_analysis_result",

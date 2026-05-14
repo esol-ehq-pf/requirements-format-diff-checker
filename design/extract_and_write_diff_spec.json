@@ -5,6 +5,28 @@
     "description": "旧解析結果フォルダと新解析結果フォルダを比較し、差分エントリを自動抽出してExcel『Output差分』シートに転記するツール"
   },
 
+  "context": {
+    "purpose": "過去プロジェクト（ver1/ver2/ver2.1）の要件ファイルフォーマットを ver3 相当に統一するにあたり、①ver3ツール再解析結果と②過去解析済み結果の同等性を確認し、フォーマット変更可否を判断する根拠を整理すること",
+    "input_definition": {
+      "old_arg": "② 過去に解析済みの結果（フォーマット変更前のツール・要件ファイルで得られた出力）",
+      "new_arg": "① ver3フォーマットの要件ファイルおよびver3の解析ツールを用いた再解析結果"
+    },
+    "output_destination": "添付Excelファイル『Output差分』シートに全バリアントの差分を記入する",
+    "customer_judgment": "差分の許容可否（『差分許容できるか』列）は顧客側で判断する。ツールは差分の抽出・記録のみを担う"
+  },
+
+  "target_variants": [
+    { "project": "ver1",  "variant": "m02", "status": "完了" },
+    { "project": "ver1",  "variant": "b01", "status": "顧客提供待ち" },
+    { "project": "ver1",  "variant": "m01", "status": "顧客提供待ち" },
+    { "project": "ver2",  "variant": "b01", "status": "顧客提供待ち" },
+    { "project": "ver2",  "variant": "m01", "status": "顧客提供待ち" },
+    { "project": "ver2",  "variant": "m02", "status": "顧客提供待ち" },
+    { "project": "ver2.1", "variant": "b01", "status": "顧客提供待ち" },
+    { "project": "ver2.1", "variant": "m01", "status": "顧客提供待ち" },
+    { "project": "ver2.1", "variant": "m02", "status": "顧客提供待ち" }
+  ],
+
   "requirements": {
     "RQ-1": "旧解析結果ディレクトリと新解析結果ディレクトリを入力として受け取ること",
     "RQ-2": "プロジェクト名・バリアント名を引数で指定できること",
@@ -14,7 +36,9 @@
     "RQ-6": "ファイルが存在しない場合はそのファイルの差分抽出をスキップし、エラー終了しないこと",
     "RQ-7": "旧新で内容が同一のファイルは差分なしとして処理をスキップすること",
     "RQ-8": "Excelの列構成（A〜J列）に準拠して書き込むこと",
-    "RQ-9": "No列（A列）は既存エントリの最大値の続番で採番すること"
+    "RQ-9": "No列（A列）は既存エントリの最大値の続番で採番すること",
+    "RQ-10": "--old 引数は②過去解析済み結果、--new 引数は①ver3ツール再解析結果として扱うこと",
+    "RQ-11": "ver1/ver2/ver2.1 × b01/m01/m02 の全9バリアントに対応できること（ファイル不在はスキップ）"
   },
 
   "cli": {
@@ -69,7 +93,8 @@
       "G": "画像リンクテキスト（固定値）",
       "H": "プロジェクト名",
       "I": "バリアント名",
-      "J": "推定原因"
+      "J": "推定原因",
+      "note_customer_column": "『差分許容できるか』列は顧客側で記入するため、ツールは書き込まない"
     },
     "overwrite_rule": "同プロジェクト・同バリアントの既存行を全削除後、末尾に追記"
   },
@@ -232,6 +257,26 @@
           "new_val": "SWC名/Node名に統一"
         }
       }
+    },
+    "processing_time_swc_group_result_csv": {
+      "file": "processing_time_SWC_group_result.csv",
+      "folder": "-",
+      "note": "差分なし期待ファイル。旧新で内容が同一であることを前提とする。差分があった場合は手動確認が必要",
+      "extraction": "なし（差分なし期待のためエントリを生成しない）"
+    },
+    "node_straddling_slot_pickup_result_csv": {
+      "file": "node_straddling_slot_pickup_result.csv",
+      "folder": "-",
+      "note": "差分なし期待ファイル。旧新で内容が同一であることを前提とする。差分があった場合は手動確認が必要",
+      "extraction": "なし（差分なし期待のためエントリを生成しない）"
+    },
+    "schedule_result_pass_fail": {
+      "file": "schedule_result.csv",
+      "folder": "-",
+      "note": "PASS/FAIL判定列の変化はactivity_plan.mdで確認対象として明記されているが、現バージョン未実装。将来対応予定",
+      "status": "TODO",
+      "target_column": "判定結果列（PASS/FAIL）",
+      "proposed_diff_type": "判定結果の変化"
     },
     "schedule_result_fail_list_csv": {
       "file": "schedule_result_fail_list.csv",
