@@ -9,35 +9,18 @@ Excel の『Output 差分』シートに転記するツールです。
 
 ## 1. ユーザーワークフロー
 
-```
-[事前準備]
-  1. 旧解析結果ディレクトリを用意する
-     （例: input/scheduling_requirement_check_analysis_result）
-  2. ver3 ツールで再解析した新解析結果ディレクトリを用意する
-     （例: input/ver1_m02_AP_再解析結果/output）
-  3. 差分管理 Excel ファイルを用意する
-     （例: input/過去プロジェクト(ver1_ver2_ver2.1)の要件ファイルフォーマット変更.xlsx）
-        ※ Excel には「Output差分」シートと「リンク」シートが必要
+```mermaid
+flowchart TD
+    A["1. 旧解析結果ディレクトリを用意\n例: input/scheduling_requirement_check_analysis_result"] --> B
+    B["2. 新解析結果ディレクトリを用意\n例: input/ver1_m02_AP_再解析結果/output"] --> C
+    C["3. 差分管理 Excel を用意\n※ 'Output差分' シートが必要\nA:No / B:フォルダ / C:ファイル / D:差分概要\nE:旧値 / F:新値 / G:リンク / H:project\nI:variant / J:推定原因"] --> D
 
-        ┌──────────────────────────────────┐
-        │ 「Output差分」シート列構成（4行目〜）│
-        │ A: No    B: フォルダ  C: ファイル  │
-        │ D: 差分概要  E: 旧値  F: 新値      │
-        │ G: リンク  H: project  I: variant  │
-        │ J: 推定原因                         │
-        └──────────────────────────────────┘
+    D{"--dry-run ?"}
+    D -- "Yes（確認のみ）" --> E["4a. ドライラン実行\nExcel を変更せず\n抽出エントリ一覧を標準出力に表示"]
+    D -- "No（本番）" --> F["4b. 本番実行\n同バリアントの既存エントリを削除し\n抽出結果を末尾に追記"]
 
-[ドライラン: 書き込み前の確認]
-  4a. --dry-run オプション付きで実行
-      → Excel を変更せず、抽出される差分エントリ一覧を標準出力に表示する
-
-[本番実行: Excel への転記]
-  4b. --dry-run なしで実行
-      → 同バリアントの既存エントリを削除し、抽出結果を末尾に追記する
-
-[検証]
-  5. verify_diff.py で転記内容の品質ゲート検証を実施する
-     （詳細は README.md 参照）
+    E --> G["5. verify_diff.py で品質ゲート検証\n詳細は README.md 参照"]
+    F --> G
 ```
 
 ---
@@ -99,28 +82,34 @@ python3 "$BASE/scripts/extract_and_write_diff.py" \
 
 ## 3. 内部処理ワークフロー
 
-```
-main()
-  │
-  ├─ [入力検証] 旧/新ディレクトリ・xlsx が存在するか確認（非存在なら exit=1）
-  │
-  ├─ extract_all(old_dir, new_dir)          ← 全差分抽出
-  │   │
-  │   ├─ extract_input_info()               [1] input_info.txt
-  │   ├─ extract_image_diffs()              [2] グラフ画像ディレクトリ群
-  │   ├─ extract_cpuload_requirements() ×2  [3] before/after_cpuload_requirements.csv
-  │   ├─ extract_requirements_csv() ×2      [4] before/after_requirements.csv
-  │   ├─ extract_budget_csv() ×1            [5] before_budget.csv
-  │   ├─ extract_input_data_csv() ×2        [6] input_data_ba/igr.csv
-  │   ├─ extract_tsync_csv() ×2             [7] before/after_csv_data_tsync_PlusBA.csv
-  │   ├─ extract_processing_time_result()   [8] processing_time_result.csv
-  │   ├─ extract_schedule_result()          [9] schedule_result.csv
-  │   └─ extract_schedule_fail_list()       [10] schedule_result_fail_list.csv
-  │
-  └─ write_to_excel(xlsx, project, variant, entries, dry_run)
-      │
-      ├─ [dry_run=True]  抽出結果を標準出力に表示して終了
-      └─ [dry_run=False] 既存エントリ削除 → 末尾に追記 → xlsx 保存
+```mermaid
+flowchart TD
+    START(["main()"])
+    START --> VAL["入力検証\n旧/新ディレクトリ・xlsx が存在するか確認"]
+    VAL -- "パス不在" --> ERR(["exit=1"])
+    VAL -- "OK" --> EXT
+
+    subgraph EXT["extract_all(old_dir, new_dir)"]
+        direction TB
+        F1["[1] extract_input_info\ninput_info.txt"]
+        F2["[2] extract_image_diffs\nグラフ画像ディレクトリ群"]
+        F3["[3] extract_cpuload_requirements ×2\nbefore/after_cpuload_requirements.csv"]
+        F4["[4] extract_requirements_csv ×2\nbefore/after_requirements.csv"]
+        F5["[5] extract_budget_csv\nbefore_budget.csv"]
+        F6["[6] extract_input_data_csv ×2\ninput_data_ba/igr.csv"]
+        F7["[7] extract_tsync_csv ×2\nbefore/after_csv_data_tsync_PlusBA.csv"]
+        F8["[8] extract_processing_time_result\nprocessing_time_result.csv"]
+        F9["[9] extract_schedule_result\nschedule_result.csv"]
+        F10["[10] extract_schedule_fail_list\nschedule_result_fail_list.csv"]
+        F1 --> F2 --> F3 --> F4 --> F5 --> F6 --> F7 --> F8 --> F9 --> F10
+    end
+
+    EXT --> WRT["write_to_excel\nxlsx, project, variant, entries, dry_run"]
+    WRT --> DRY{"dry_run ?"}
+    DRY -- "True" --> OUT["抽出結果を標準出力に表示"]
+    DRY -- "False" --> SAVE["既存エントリ削除\n→ 末尾に追記\n→ xlsx 保存"]
+    OUT --> END(["exit=0"])
+    SAVE --> END
 ```
 
 ---
@@ -151,13 +140,14 @@ main()
 
 **判定ロジック:**
 
-```
-削除された画像 = old にあって new にない画像
-追加された画像 = new にあって old にない画像
-
-削除画像に対し、追加画像との名前類似度（SequenceMatcher）を計算:
-  類似度 ≤ 0.7  → 「ファイル消失」エントリを生成
-  類似度 > 0.7  → 「画像差分」（リネーム）エントリを生成
+```mermaid
+flowchart TD
+    A["各グラフディレクトリの PASS/FAIL サブフォルダを走査"]
+    A --> B["削除画像 = old にあって new にない画像\n追加画像 = new にあって old にない画像"]
+    B --> C["削除画像ごとに\n追加画像との名前類似度を計算\n（SequenceMatcher）"]
+    C --> D{"類似度 > 0.7\nの追加画像が存在するか？"}
+    D -- "No" --> E["エントリ生成: ファイル消失\ndiff_type = 'ファイル消失'"]
+    D -- "Yes" --> F["エントリ生成: 画像差分（リネーム）\ndiff_type = '画像差分'\nold_val=旧stem, new_val=新stemに変化"]
 ```
 
 | 差分概要 | 説明 |
