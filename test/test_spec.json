@@ -160,8 +160,25 @@
   ],
 
   "test_execution_record": {
-    "status": "not_started",
-    "executed_date": null,
-    "results": []
+    "status": "completed",
+    "executed_date": "2026-05-14",
+    "results": [
+      {"id": "TC-1", "result": "PASS", "actual_exit_code": 0,  "note": "全QG PASS, verify_report_m02.yaml 生成, review_plan_m02.yaml 更新確認"},
+      {"id": "TC-2", "result": "PASS", "actual_exit_code": 2,  "note": "error: the following arguments are required: --project"},
+      {"id": "TC-3", "result": "PASS", "actual_exit_code": 2,  "note": "error: the following arguments are required: --xlsx"},
+      {"id": "TC-4", "result": "PASS", "actual_exit_code": 2,  "note": "error: argument --old: ディレクトリが存在しません"},
+      {"id": "TC-5", "result": "PASS", "actual_exit_code": 0,  "note": "test/verify_report_m02.yaml にデフォルト出力確認"},
+      {"id": "TC-6", "result": "PASS", "actual_exit_code": 1,  "note": "plan不在をスキップして終了（exit=1はentries=0件のQG FAIL）"},
+      {"id": "TC-7", "result": "PASS", "actual_exit_code": null, "note": "subprocess 参照なし（grep で確認）"},
+      {"id": "TC-8", "result": "PASS", "actual_exit_code": null, "note": "import os なし（grep で確認）"},
+      {"id": "TC-9", "result": "PASS", "actual_exit_code": null, "note": "'ver1 m02' 固定文字列なし（grep で確認）"}
+    ],
+    "quality_gate_results": {
+      "QG-T-1": "PASS",
+      "QG-T-2": "PASS",
+      "QG-T-3": "PASS",
+      "QG-T-4": "PASS"
+    },
+    "overall": "PASS"
   }
 }

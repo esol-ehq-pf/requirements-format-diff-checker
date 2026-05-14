@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
-ver1 m02 Output差分シート セルフレビュースクリプト
-review_plan_m02.yaml の計画に従って検証を実施し、
-verify_report_m02.yaml にレポートを出力する。
+Output差分シート セルフレビュースクリプト
+
+Excel の Output差分シートに記録された差分エントリを自動検証し、
+品質ゲート（QG）の総合判定を YAML レポートに出力する。
+対象プロジェクト・バリアントは CLI 引数で指定する。
 """
+import argparse
 import difflib
-import os
-import subprocess
+import sys
 import warnings
 from datetime import date
 from pathlib import Path
@@ -14,17 +16,6 @@ from pathlib import Path
 import openpyxl
 import yaml
 
-# ──────────────────────────────────────────
-# パス定義
-# ──────────────────────────────────────────
-BASE = Path(__file__).parent.parent.parent.parent  # /home/y-shinohara/adas
-OLD = BASE / "work/format-change/input/scheduling_requirement_check_analysis_result"
-NEW = BASE / "work/format-change/input/ver1_m02_AP_再解析結果/output"
-XLSX = BASE / "work/format-change/input/過去プロジェクト(ver1_ver2_ver2.1)の要件ファイルフォーマット変更.xlsx"
-REPORT_OUT = BASE / "work/format-change/test/verify_report_m02.yaml"
-
-PROJECT = "ver1"
-VARIANT = "m02"
 LINK_TEXT = "過去プロジェクト(ver1/ver2/ver2.1)の 要件ファイルフォーマット変更"
 
 # 許容される差分概要の文言リスト
@@ -55,11 +46,7 @@ ALLOWED_DIFF_TYPES = {
 def files_differ(path_old: Path, path_new: Path) -> bool:
     if not path_old.exists() or not path_new.exists():
         return True
-    result = subprocess.run(
-        ["diff", "-q", str(path_old), str(path_new)],
-        capture_output=True,
-    )
-    return result.returncode != 0
+    return path_old.read_bytes() != path_new.read_bytes()
 
 
 def image_list(folder: Path) -> set:
@@ -88,13 +75,13 @@ def warn(msg=""):
 # ──────────────────────────────────────────
 # Excel エントリ読み込み
 # ──────────────────────────────────────────
-def load_excel_entries():
+def load_excel_entries(xlsx: Path, project: str, variant: str):
     warnings.filterwarnings("ignore")
-    wb = openpyxl.load_workbook(XLSX)
+    wb = openpyxl.load_workbook(xlsx)
     ws = wb["Output差分"]
     entries = []
     for row in ws.iter_rows(min_row=4, values_only=True):
-        if row[8] == VARIANT and row[7] == PROJECT:
+        if row[8] == variant and row[7] == project:
             entries.append(
                 {
                     "no": row[0],
@@ -115,7 +102,7 @@ def load_excel_entries():
 # ──────────────────────────────────────────
 # Phase 1: ファイルレベルインベントリ確認
 # ──────────────────────────────────────────
-def phase1_file_inventory(entries):
+def phase1_file_inventory(entries, old_dir: Path, new_dir: Path):
     results = {}
 
     # 全対象ファイル（画像フォルダ以外）
@@ -142,7 +129,7 @@ def phase1_file_inventory(entries):
     no_diff_files = []
 
     for rel in csv_files:
-        has_diff = files_differ(OLD / rel, NEW / rel)
+        has_diff = files_differ(old_dir / rel, new_dir / rel)
         if has_diff:
             diff_files.append(rel)
         else:
@@ -203,10 +190,10 @@ def phase1_file_inventory(entries):
 # ──────────────────────────────────────────
 # Phase 2: CSV差分の構造化確認
 # ──────────────────────────────────────────
-def detect_csv_diff_types(rel_path: str) -> dict:
+def detect_csv_diff_types(rel_path: str, old_dir: Path, new_dir: Path) -> dict:
     """各CSVの差分を解析し、差分種別と代表値を返す"""
-    old_path = OLD / rel_path
-    new_path = NEW / rel_path
+    old_path = old_dir / rel_path
+    new_path = new_dir / rel_path
 
     if not old_path.exists() or not new_path.exists():
         return {"exists": False}
@@ -242,7 +229,7 @@ def detect_csv_diff_types(rel_path: str) -> dict:
     }
 
 
-def phase2_csv_diffs(entries):
+def phase2_csv_diffs(entries, old_dir: Path, new_dir: Path):
     results = {}
 
     # 差分なしが期待されるファイル
@@ -305,7 +292,7 @@ def phase2_csv_diffs(entries):
 
     csv_results = {}
     for rel, checks in csv_checks.items():
-        d = detect_csv_diff_types(rel)
+        d = detect_csv_diff_types(rel, old_dir, new_dir)
         if not d.get("exists"):
             csv_results[rel] = ng("ファイルが存在しない")
             continue
@@ -336,7 +323,7 @@ def phase2_csv_diffs(entries):
 # ──────────────────────────────────────────
 # Phase 3: 画像ファイル差分確認
 # ──────────────────────────────────────────
-def phase3_image_diffs(entries):
+def phase3_image_diffs(entries, old_dir: Path, new_dir: Path):
     graph_dirs = [
         "processing_load_duration_graph",
         "Sequence_duration_graph",
@@ -349,8 +336,8 @@ def phase3_image_diffs(entries):
 
     for gdir in graph_dirs:
         for sub in ("PASS", "FAIL"):
-            old_imgs = image_list(OLD / gdir / sub)
-            new_imgs = image_list(NEW / gdir / sub)
+            old_imgs = image_list(old_dir / gdir / sub)
+            new_imgs = image_list(new_dir / gdir / sub)
 
             deleted = sorted(old_imgs - new_imgs)
             added = sorted(new_imgs - old_imgs)
@@ -410,7 +397,7 @@ def phase3_image_diffs(entries):
 # ──────────────────────────────────────────
 # Phase 4: Excelエントリ正確性確認
 # ──────────────────────────────────────────
-def phase4_entry_accuracy(entries):
+def phase4_entry_accuracy(entries, old_dir: Path, new_dir: Path):
     results = []
     ng_count = 0
 
@@ -438,19 +425,19 @@ def phase4_entry_accuracy(entries):
         if folder and folder != "-" and fname:
             real_folder = normalize_folder(folder)
             old_exists = (
-                exists_with_csv_fallback(OLD / real_folder / fname)
-                or any(exists_with_csv_fallback(OLD / real_folder / sub / fname) for sub in ("PASS", "FAIL"))
+                exists_with_csv_fallback(old_dir / real_folder / fname)
+                or any(exists_with_csv_fallback(old_dir / real_folder / sub / fname) for sub in ("PASS", "FAIL"))
             )
             new_exists = (
-                exists_with_csv_fallback(NEW / real_folder / fname)
-                or any(exists_with_csv_fallback(NEW / real_folder / sub / fname) for sub in ("PASS", "FAIL"))
+                exists_with_csv_fallback(new_dir / real_folder / fname)
+                or any(exists_with_csv_fallback(new_dir / real_folder / sub / fname) for sub in ("PASS", "FAIL"))
             )
             if not old_exists and not new_exists:
                 issues.append(f"フォルダ/ファイルが①②どちらにも存在しない: {real_folder}/{fname}")
         elif fname and folder == "-":
             # ルート直下ファイル
-            old_exists = exists_with_csv_fallback(OLD / fname)
-            new_exists = exists_with_csv_fallback(NEW / fname)
+            old_exists = exists_with_csv_fallback(old_dir / fname)
+            new_exists = exists_with_csv_fallback(new_dir / fname)
             if not old_exists and not new_exists:
                 issues.append(f"ファイルが①②どちらにも存在しない: {fname}")
 
@@ -473,12 +460,12 @@ def phase4_entry_accuracy(entries):
 # ──────────────────────────────────────────
 # Phase 5: メタ整合性確認
 # ──────────────────────────────────────────
-def phase5_meta_consistency(entries):
+def phase5_meta_consistency(entries, project: str, variant: str):
     issues = []
     for e in entries:
-        if e["project"] != PROJECT:
+        if e["project"] != project:
             issues.append(f"project列が不正: no={e['no']}, value={e['project']}")
-        if e["variant"] != VARIANT:
+        if e["variant"] != variant:
             issues.append(f"variant列が不正: no={e['no']}, value={e['variant']}")
         if e["link"] != LINK_TEXT:
             issues.append(f"link列が不正: no={e['no']}, value={e['link']}")
@@ -509,26 +496,69 @@ def evaluate_quality_gates(p1, p2, p3, p4, p5):
 # ──────────────────────────────────────────
 # メイン
 # ──────────────────────────────────────────
-def main():
-    print("=== ver1 m02 セルフレビュー開始 ===")
+def _dir_path(value: str) -> Path:
+    """argparse type: ディレクトリ存在チェック"""
+    p = Path(value)
+    if not p.is_dir():
+        raise argparse.ArgumentTypeError(f"ディレクトリが存在しません: {value}")
+    return p
 
-    entries = load_excel_entries()
+
+def _xlsx_path(value: str) -> Path:
+    """argparse type: .xlsx ファイル存在チェック"""
+    p = Path(value)
+    if not p.exists():
+        raise argparse.ArgumentTypeError(f"ファイルが存在しません: {value}")
+    if p.suffix.lower() != ".xlsx":
+        raise argparse.ArgumentTypeError(f".xlsx ファイルを指定してください: {value}")
+    return p
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Output差分シート セルフレビュースクリプト"
+    )
+    parser.add_argument("--project",    required=True,               help="プロジェクト名（例: ver1, ver2, ver2.1）")
+    parser.add_argument("--variant",    required=True,               help="バリアント名（例: m02, b01, m01）")
+    parser.add_argument("--old",        required=True, type=_dir_path, dest="old_dir", help="旧解析結果ディレクトリ")
+    parser.add_argument("--new",        required=True, type=_dir_path, dest="new_dir", help="新解析結果ディレクトリ")
+    parser.add_argument("--xlsx",       required=True, type=_xlsx_path,                help="Output差分シートを持つ Excel ファイル")
+    _default_base = Path(__file__).parent.parent
+    parser.add_argument(
+        "--report-out",
+        default=None,
+        help="検証レポート出力先 YAML（省略時: test/verify_report_{variant}.yaml）",
+    )
+    parser.add_argument(
+        "--plan",
+        default=None,
+        help="レビュー計画 YAML（省略時: test/review_plan_{variant}.yaml、不在時スキップ）",
+    )
+    args = parser.parse_args()
+
+    base = Path(__file__).parent.parent
+    report_out = Path(args.report_out) if args.report_out else base / "test" / f"verify_report_{args.variant}.yaml"
+    plan_path  = Path(args.plan)       if args.plan        else base / "test" / f"review_plan_{args.variant}.yaml"
+
+    print(f"=== {args.project} {args.variant} セルフレビュー開始 ===")
+
+    entries = load_excel_entries(args.xlsx, args.project, args.variant)
     print(f"Excelエントリ読み込み: {len(entries)} 件")
 
     print("Phase 1: ファイルインベントリ確認...")
-    p1 = phase1_file_inventory(entries)
+    p1 = phase1_file_inventory(entries, args.old_dir, args.new_dir)
 
     print("Phase 2: CSV差分確認...")
-    p2 = phase2_csv_diffs(entries)
+    p2 = phase2_csv_diffs(entries, args.old_dir, args.new_dir)
 
     print("Phase 3: 画像ファイル差分確認...")
-    p3 = phase3_image_diffs(entries)
+    p3 = phase3_image_diffs(entries, args.old_dir, args.new_dir)
 
     print("Phase 4: Excelエントリ正確性確認...")
-    p4 = phase4_entry_accuracy(entries)
+    p4 = phase4_entry_accuracy(entries, args.old_dir, args.new_dir)
 
     print("Phase 5: メタ整合性確認...")
-    p5 = phase5_meta_consistency(entries)
+    p5 = phase5_meta_consistency(entries, args.project, args.variant)
 
     qg_results, overall = evaluate_quality_gates(p1, p2, p3, p4, p5)
 
@@ -536,8 +566,8 @@ def main():
         "meta": {
             "executed_date": str(date.today()),
             "excel_entries_count": len(entries),
-            "project": PROJECT,
-            "variant": VARIANT,
+            "project": args.project,
+            "variant": args.variant,
         },
         "quality_gates": qg_results,
         "overall": overall,
@@ -548,7 +578,8 @@ def main():
         "phase5_meta_consistency": p5,
     }
 
-    with open(REPORT_OUT, "w", encoding="utf-8") as f:
+    report_out.parent.mkdir(parents=True, exist_ok=True)
+    with open(report_out, "w", encoding="utf-8") as f:
         yaml.dump(report, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
 
     print(f"\n=== 品質ゲート結果 ===")
@@ -556,10 +587,9 @@ def main():
         mark = "✅" if v == "PASS" else "❌"
         print(f"  {mark} {k}: {v}")
     print(f"\n  総合判定: {'✅ PASS' if overall == 'PASS' else '❌ FAIL'}")
-    print(f"\nレポート出力: {REPORT_OUT}")
+    print(f"\nレポート出力: {report_out}")
 
-    # 計画ファイルの実行ステータスを更新
-    plan_path = Path(__file__).parent.parent / "test" / "review_plan_m02.yaml"
+    # 計画ファイルの実行ステータスを更新（ファイルが存在する場合のみ）
     if plan_path.exists():
         with open(plan_path, encoding="utf-8") as f:
             plan = yaml.safe_load(f)
@@ -569,6 +599,8 @@ def main():
         with open(plan_path, "w", encoding="utf-8") as f:
             yaml.dump(plan, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
         print(f"計画ファイル更新: {plan_path}")
+
+    sys.exit(0 if overall == "PASS" else 1)
 
 
 if __name__ == "__main__":
