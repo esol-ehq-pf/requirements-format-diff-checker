@@ -73,6 +73,13 @@
         "required": false,
         "type": "flag",
         "description": "指定するとExcelに書き込まず、抽出結果のみ標準出力に表示する"
+      },
+      "--csv-out": {
+        "required": false,
+        "type": "optional_string",
+        "default_when_omitted": null,
+        "default_filename": "diff_output.csv",
+        "description": "指定するとExcelへの書き込みを行わず差分エントリをCSVファイルに出力する。ファイル名を値として与えた場合（例: --csv-out result.csv）はそのパスに出力する。値なしで指定した場合（--csv-out のみ）はカレントディレクトリに diff_output.csv として出力する。--dry-run との同時指定は不可（--csv-out が優先され警告を出力する）"
       }
     },
     "exit_codes": {
@@ -80,6 +87,26 @@
       "1": "入力パスが存在しない場合",
       "2": "未検出パターン検知: 差分ありファイルが存在するにもかかわらずエントリが0件のファイルが1件以上あった場合（FATAL終了）"
     }
+  },
+
+  "csv_output": {
+    "trigger": "--csv-out オプション指定時",
+    "columns": ["No", "フォルダ", "ファイル", "差分概要", "旧値", "新値", "リンク", "project", "variant", "推定原因"],
+    "column_mapping": {
+      "No": "エントリの連番（1始まり）",
+      "フォルダ": "entry['folder']",
+      "ファイル": "entry['file']",
+      "差分概要": "entry['diff_type']",
+      "旧値": "entry['old_val']",
+      "新値": "entry['new_val']",
+      "リンク": "LINK_TEXT 固定値",
+      "project": "引数 --project の値",
+      "variant": "引数 --variant の値",
+      "推定原因": "entry.get('cause') — None の場合は空文字"
+    },
+    "encoding": "utf-8-sig（Excel で文字化けしないよう BOM 付き）",
+    "excel_write": "行わない（排他）",
+    "dry_run_conflict": "--dry-run と同時指定した場合は --csv-out を優先し、'警告: --dry-run と --csv-out が同時指定されました。--csv-out を優先します。' を標準出力に表示する"
   },
 
   "excel_output": {

@@ -636,6 +636,34 @@ def extract_all(old_dir: Path, new_dir: Path) -> tuple[list[dict], dict]:
 
 
 # ──────────────────────────────────────────
+# CSV 書き込み
+# ──────────────────────────────────────────
+
+CSV_COLUMNS = ["No", "フォルダ", "ファイル", "差分概要", "旧値", "新値", "リンク", "project", "variant", "推定原因"]
+
+
+def write_to_csv(csv_path: Path, project: str, variant: str, entries: list[dict]) -> int:
+    """差分エントリを CSV ファイルに書き出す（utf-8-sig: Excel で文字化けしない BOM 付き）"""
+    with open(csv_path, "w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS)
+        writer.writeheader()
+        for i, e in enumerate(entries, start=1):
+            writer.writerow({
+                "No": i,
+                "フォルダ": e["folder"],
+                "ファイル": e["file"],
+                "差分概要": e["diff_type"],
+                "旧値": e["old_val"],
+                "新値": e["new_val"],
+                "リンク": LINK_TEXT,
+                "project": project,
+                "variant": variant,
+                "推定原因": e.get("cause") or "",
+            })
+    return len(entries)
+
+
+# ──────────────────────────────────────────
 # Excel 書き込み
 # ──────────────────────────────────────────
 
@@ -717,11 +745,24 @@ def main():
     parser.add_argument("--new", required=True, help="新解析結果ディレクトリ")
     parser.add_argument("--xlsx", required=True, help="Excelファイルパス")
     parser.add_argument("--dry-run", action="store_true", help="書き込まずに抽出結果のみ表示")
+    parser.add_argument(
+        "--csv-out",
+        nargs="?",
+        const="diff_output.csv",
+        default=None,
+        metavar="FILE",
+        help="差分エントリを CSV ファイルに出力する。ファイル名省略時は diff_output.csv に出力（Excel 書き込みは行わない）",
+    )
     args = parser.parse_args()
 
     old_dir = Path(args.old)
     new_dir = Path(args.new)
     xlsx_path = Path(args.xlsx)
+
+    # --dry-run と --csv-out の同時指定チェック
+    if args.dry_run and args.csv_out is not None:
+        print("警告: --dry-run と --csv-out が同時指定されました。--csv-out を優先します。")
+        args.dry_run = False
 
     for p in (old_dir, new_dir, xlsx_path):
         if not p.exists():
@@ -749,9 +790,14 @@ def main():
         print("  → scripts/extract_and_write_diff.py の抽出ロジックを更新してから再実行してください。")
         raise SystemExit(2)
 
-    written = write_to_excel(xlsx_path, args.project, args.variant, entries, args.dry_run)
-    if not args.dry_run:
-        print(f"  Excel転記完了: {written} 件")
+    if args.csv_out is not None:
+        csv_path = Path(args.csv_out)
+        written = write_to_csv(csv_path, args.project, args.variant, entries)
+        print(f"  CSV出力完了: {written} 件 → {csv_path}")
+    else:
+        written = write_to_excel(xlsx_path, args.project, args.variant, entries, args.dry_run)
+        if not args.dry_run:
+            print(f"  Excel転記完了: {written} 件")
 
 
 if __name__ == "__main__":
