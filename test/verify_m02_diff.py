@@ -21,7 +21,7 @@ BASE = Path(__file__).parent.parent.parent  # /home/y-shinohara/adas
 OLD = BASE / "work/format-change/input/scheduling_requirement_check_analysis_result"
 NEW = BASE / "work/format-change/input/ver1_m02_AP_再解析結果/output"
 XLSX = BASE / "work/format-change/input/過去プロジェクト(ver1_ver2_ver2.1)の要件ファイルフォーマット変更.xlsx"
-REPORT_OUT = BASE / "work/format-change/verify_report_m02.yaml"
+REPORT_OUT = BASE / "work/format-change/test/verify_report_m02.yaml"
 
 PROJECT = "ver1"
 VARIANT = "m02"
