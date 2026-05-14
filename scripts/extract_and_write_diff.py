@@ -528,25 +528,111 @@ def extract_schedule_fail_list(old_dir: Path, new_dir: Path) -> list[dict]:
 # 全差分抽出メイン
 # ──────────────────────────────────────────
 
-def extract_all(old_dir: Path, new_dir: Path) -> list[dict]:
-    """全ファイルの差分を抽出してエントリリストを返す"""
-    entries = []
-    entries += extract_input_info(old_dir, new_dir)
-    entries += extract_image_diffs(old_dir, new_dir)
+def extract_all(old_dir: Path, new_dir: Path) -> tuple[list[dict], dict]:
+    """全ファイルの差分を抽出してエントリリストと検出統計を返す。
+
+    Returns:
+        entries: 抽出されたエントリリスト
+        stats:   {
+            "total_differing": int,   # 差分ありファイル数
+            "detected":        int,   # 差分ありかつエントリ生成済みファイル数
+            "undetected":      list,  # 差分ありなのに0件だったファイルラベル
+        }
+    """
+    entries: list[dict] = []
+    undetected: list[str] = []
+    total_differing = 0
+    detected_count  = 0
+
+    def _file_differs(rel: str) -> bool:
+        op, np = old_dir / rel, new_dir / rel
+        return op.exists() and np.exists() and op.read_bytes() != np.read_bytes()
+
+    def _check(label: str, new_e: list[dict], differs: bool) -> None:
+        """差分あり/なしを記録し、差分ありなのに0件なら undetected に追加する"""
+        nonlocal total_differing, detected_count
+        if differs:
+            total_differing += 1
+            if new_e:
+                detected_count += 1
+            else:
+                undetected.append(label)
+        entries.extend(new_e)
+
+    # [1] input_info.txt
+    _check("input_info.txt",
+           extract_input_info(old_dir, new_dir),
+           _file_differs("input_info.txt"))
+
+    # [2] グラフ画像（一括呼び出し後、gdir/sub 単位でチェック）
+    img_entries = extract_image_diffs(old_dir, new_dir)
+    entries += img_entries
+    _GRAPH_DIRS = [
+        "processing_load_duration_graph",
+        "Sequence_duration_graph",
+        "SWC_budget_duration_graph",
+        "WakeupInterval_graph",
+    ]
+    for gdir in _GRAPH_DIRS:
+        for sub in ("PASS", "FAIL"):
+            old_imgs = image_list(old_dir / gdir / sub)
+            new_imgs = image_list(new_dir / gdir / sub)
+            if old_imgs != new_imgs:
+                total_differing += 1
+                if any(x["folder"] == gdir for x in img_entries):
+                    detected_count += 1
+                else:
+                    undetected.append(f"{gdir}/{sub}")
+
+    # [3] cpuload_requirements
     for fn in ("before_cpuload_requirements.csv", "after_cpuload_requirements.csv"):
-        entries += extract_cpuload_requirements(old_dir, new_dir, fn)
+        _check(f"temp/{fn}",
+               extract_cpuload_requirements(old_dir, new_dir, fn),
+               _file_differs(f"temp/{fn}"))
+
+    # [4] requirements
     for fn in ("before_requirements.csv", "after_requirements.csv"):
-        entries += extract_requirements_csv(old_dir, new_dir, fn)
-    for fn in ("before_budget.csv",):
-        entries += extract_budget_csv(old_dir, new_dir, fn)
-    entries += extract_input_data_csv(old_dir, new_dir, "input_data_ba.csv")
-    entries += extract_input_data_csv(old_dir, new_dir, "input_data_igr.csv")
+        _check(f"temp/{fn}",
+               extract_requirements_csv(old_dir, new_dir, fn),
+               _file_differs(f"temp/{fn}"))
+
+    # [5] budget
+    _check("temp/before_budget.csv",
+           extract_budget_csv(old_dir, new_dir, "before_budget.csv"),
+           _file_differs("temp/before_budget.csv"))
+
+    # [6] input_data
+    for fn in ("input_data_ba.csv", "input_data_igr.csv"):
+        _check(fn,
+               extract_input_data_csv(old_dir, new_dir, fn),
+               _file_differs(fn))
+
+    # [7] tsync
     for fn in ("before_csv_data_tsync_PlusBA.csv", "after_csv_data_tsync_PlusBA.csv"):
-        entries += extract_tsync_csv(old_dir, new_dir, fn)
-    entries += extract_processing_time_result(old_dir, new_dir)
-    entries += extract_schedule_result(old_dir, new_dir)
-    entries += extract_schedule_fail_list(old_dir, new_dir)
-    return entries
+        _check(f"temp/{fn}",
+               extract_tsync_csv(old_dir, new_dir, fn),
+               _file_differs(f"temp/{fn}"))
+
+    # [8] processing_time_result
+    _check("processing_time_result.csv",
+           extract_processing_time_result(old_dir, new_dir),
+           _file_differs("processing_time_result.csv"))
+
+    # [9] schedule_result
+    _check("schedule_result.csv",
+           extract_schedule_result(old_dir, new_dir),
+           _file_differs("schedule_result.csv"))
+
+    # [10] schedule_fail_list
+    _check("schedule_result_fail_list.csv",
+           extract_schedule_fail_list(old_dir, new_dir),
+           _file_differs("schedule_result_fail_list.csv"))
+
+    return entries, {
+        "total_differing": total_differing,
+        "detected":        detected_count,
+        "undetected":      undetected,
+    }
 
 
 # ──────────────────────────────────────────
@@ -646,8 +732,22 @@ def main():
     print(f"  旧: {old_dir}")
     print(f"  新: {new_dir}")
 
-    entries = extract_all(old_dir, new_dir)
+    entries, stats = extract_all(old_dir, new_dir)
+    total_diff  = stats["total_differing"]
+    detected    = stats["detected"]
+    undetected  = stats["undetected"]
+    rate        = (detected / total_diff * 100) if total_diff > 0 else 100.0
+
     print(f"  抽出件数: {len(entries)} 件")
+    print(f"  検出率:   {detected}/{total_diff} ({rate:.0f}%)")
+
+    if undetected:
+        print(f"\n[FATAL] 差分ありなのに抽出ロジックが 0 件を返したファイルが {len(undetected)} 件あります:")
+        for f in undetected:
+            print(f"  - {f}")
+        print("  → 新しい差分パターンが含まれている可能性があります。")
+        print("  → scripts/extract_and_write_diff.py の抽出ロジックを更新してから再実行してください。")
+        raise SystemExit(2)
 
     written = write_to_excel(xlsx_path, args.project, args.variant, entries, args.dry_run)
     if not args.dry_run:
