@@ -359,3 +359,90 @@ def test_csv_out_stdout_message(tmp_path, monkeypatch, capsys):
     captured = capsys.readouterr()
     assert "CSV出力完了" in captured.out, "stdout に 'CSV出力完了' が含まれること"
     assert str(csv_out) in captured.out, "stdout に出力先パスが含まれること"
+
+
+# ─────────────────────────────────────────
+# TC-CSV-11: Excel 書き込み成功時に 'Excel転記完了' が stdout に出力されること (NG-3)
+# ─────────────────────────────────────────
+
+def test_excel_write_stdout_message(tmp_path, monkeypatch, capsys):
+    """Excel 書き込み完了時に 'Excel転記完了: N 件' が標準出力に表示されること"""
+    import openpyxl
+    from extract_and_write_diff import main
+
+    old_dir = tmp_path / "old"
+    new_dir = tmp_path / "new"
+    old_dir.mkdir()
+    new_dir.mkdir()
+
+    xlsx = tmp_path / "dummy.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Output差分"
+    wb.save(xlsx)
+
+    monkeypatch.setattr(
+        sys, "argv",
+        [
+            "extract_and_write_diff.py",
+            "--project", "ver1",
+            "--variant", "m02",
+            "--old", str(old_dir),
+            "--new", str(new_dir),
+            "--xlsx", str(xlsx),
+        ],
+    )
+
+    main()
+    captured = capsys.readouterr()
+    assert "Excel転記完了" in captured.out, "stdout に 'Excel転記完了' が含まれること"
+
+
+# ─────────────────────────────────────────
+# TC-CSV-12: 既存エントリ上書き時に '既存エントリ N 件を上書きします' が stdout に出力されること (NG-1)
+# ─────────────────────────────────────────
+
+def test_excel_overwrite_stdout_message(tmp_path, monkeypatch, capsys):
+    """既存の同 project/variant エントリが存在するとき '既存エントリ N 件を上書きします' が表示されること"""
+    import openpyxl
+    from extract_and_write_diff import main, SHEET_NAME
+
+    old_dir = tmp_path / "old"
+    new_dir = tmp_path / "new"
+    old_dir.mkdir()
+    new_dir.mkdir()
+
+    # 既存エントリ（project=ver1, variant=m02）を 1 件持つ xlsx を準備
+    xlsx = tmp_path / "dummy.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = SHEET_NAME
+    # ヘッダ相当（行1〜3はヘッダ想定）、行4に既存エントリを置く
+    ws["A3"] = 0  # No 数式の基準行
+    ws["A4"] = "=A3+1"
+    ws["B4"] = "-"
+    ws["C4"] = "existing_file.txt"
+    ws["D4"] = "入力ファイルの差分"
+    ws["E4"] = "old"
+    ws["F4"] = "new"
+    ws["G4"] = "link"
+    ws["H4"] = "ver1"   # project
+    ws["I4"] = "m02"    # variant
+    ws["J4"] = ""
+    wb.save(xlsx)
+
+    monkeypatch.setattr(
+        sys, "argv",
+        [
+            "extract_and_write_diff.py",
+            "--project", "ver1",
+            "--variant", "m02",
+            "--old", str(old_dir),
+            "--new", str(new_dir),
+            "--xlsx", str(xlsx),
+        ],
+    )
+
+    main()
+    captured = capsys.readouterr()
+    assert "上書き" in captured.out, "stdout に '上書き' が含まれること（既存エントリ上書きメッセージ）"

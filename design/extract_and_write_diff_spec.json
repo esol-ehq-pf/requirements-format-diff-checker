@@ -176,7 +176,10 @@
       "step2": "_delete_ghost_rows() で A列に数式のみ残ったゴースト行（B列以降が全て空）を後ろから物理削除",
       "step3": "B列以降にデータがある行の最終行を get_last_data_row() で取得し、その次の行から新エントリを追記",
       "note_ghost_row": "A列の =A{n}+1 数式は delete_rows() で行を削除しても残存することがある。step2 でこれを除去しないと get_last_data_row() が誤った最終行を返し、新エントリが空白行の後に追記されるバグが発生する（BUG-1/BUG-2 として修正済み）"
-    }
+    },
+    "stdout_on_success": "Excel転記完了: {N} 件  （標準出力に出力される。dry-run 時は出力されない）",
+    "dry_run_stdout": "[DRY-RUN] 以下の {N} 件を行 {start_row}〜 に書き込む予定:  （エントリごとに folder/file/diff/old/new を表示）",
+    "overwrite_stdout": "既存エントリが存在する場合、「既存エントリ {N} 件を上書きします（行 X〜Y）」を標準出力に表示する（dry-run 時は表示されない）"
   },
   "detection_guarantee": {
     "summary": "差分の見落とし（サイレント失敗）は構造的に発生しない",
