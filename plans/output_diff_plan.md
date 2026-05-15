@@ -228,8 +228,9 @@ python3 scripts/output_diff.py
 - TC-2: Different テキストファイル → `result == "Different"`
 - TC-3: 旧フォルダのみ存在 → `result == "Left only"`
 - TC-4: 新フォルダのみ存在 → `result == "Right only"`
-- TC-10: バイナリ（PNG 相当）が Identical / Different に正しく分類されること
-
+- TC-10a: バイナリ（拡張子 `.png`）が Identical / Different に正しく分類されること
+- TC-10b: 拡張子が `.csv` だが内容が非 UTF-8 バイナリ → デコードエラー → バイナリ扱いになること  ← **フォールバックパスのテスト**
+  - fixture: `b'\x80\x81\x82...'` 等の非 UTF-8 バイト列をインライン生成
 **コミット**: `feat(it-2): フォルダ比較ロジック実装（4分類）`
 
 ---
