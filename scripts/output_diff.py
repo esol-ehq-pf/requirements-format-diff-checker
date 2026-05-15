@@ -106,6 +106,25 @@ def get_mtime(path: Path) -> str:
         return ""
 
 
+def _extract_png_idat(data: bytes) -> bytes:
+    """PNG バイト列から IDAT チャンク（画像本体）を連結して返す。
+    PNG シグネチャが不正な場合やパース失敗時は空バイト列を返す。"""
+    if len(data) < 8 or data[:8] != b'\x89PNG\r\n\x1a\n':
+        return b""
+    import struct
+    pos = 8
+    idat: list[bytes] = []
+    while pos + 8 <= len(data):
+        length = struct.unpack(">I", data[pos:pos + 4])[0]
+        chunk_type = data[pos + 4:pos + 8]
+        if chunk_type == b"IDAT":
+            idat.append(data[pos + 8:pos + 8 + length])
+        elif chunk_type == b"IEND":
+            break
+        pos += 4 + 4 + length + 4  # length + type + data + CRC
+    return b"".join(idat)
+
+
 # ──────────────────────────────────────────
 # 比較ロジック（IT-2 で実装予定）
 # ──────────────────────────────────────────
@@ -137,7 +156,16 @@ def _compare_file(rel: str, old_root: Path, new_root: Path) -> DiffEntry:
     if is_binary(old_path) or is_binary(new_path):
         old_bytes = old_path.read_bytes()
         new_bytes = new_path.read_bytes()
-        result = "Identical" if old_bytes == new_bytes else "Different"
+        if old_bytes == new_bytes:
+            result = "Identical"
+        elif ext.lower() == ".png":
+            # PNG は IDAT チャンク（画像本体）のみ比較する
+            # メタデータ（tEXt に含まれる Matplotlib バージョン等）の差異は無視する
+            old_idat = _extract_png_idat(old_bytes)
+            new_idat = _extract_png_idat(new_bytes)
+            result = "Identical" if (old_idat and old_idat == new_idat) else "Different"
+        else:
+            result = "Different"
         return DiffEntry(name=name, folder=folder, result=result,
                          old_mtime=old_mtime, new_mtime=new_mtime, ext=ext)
 

@@ -167,9 +167,53 @@ def test_tc10b_binary_fallback(tmp_path):
     assert entries[0].result == "Identical"
 
 
-# ─────────────────────────────────────────
-# IT-3: CSV 出力
-# ─────────────────────────────────────────
+def test_tc10c_png_idat_identical(tmp_path):
+    """TC-10c: PNG で IDAT（画像本体）が同一でメタデータのみ異なる場合は Identical に分類される。"""
+    import struct, zlib
+
+    def make_png(text_meta: bytes) -> bytes:
+        """最小限の PNG を生成する（IHDR + tEXt + IDAT + IEND）。"""
+        def chunk(name: bytes, data: bytes) -> bytes:
+            import zlib as _zlib
+            return (
+                struct.pack(">I", len(data))
+                + name
+                + data
+                + struct.pack(">I", _zlib.crc32(name + data) & 0xFFFFFFFF)
+            )
+
+        sig = b"\x89PNG\r\n\x1a\n"
+        # IHDR: 1x1 px, 8-bit RGB
+        ihdr_data = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)
+        # IDAT: 最小限の圧縮画像データ（1px=3bytes + filtertype byte）
+        raw = b"\x00\xff\x00\x00"  # filter=0, R=255, G=0, B=0
+        idat_data = zlib.compress(raw)
+        ihdr = chunk(b"IHDR", ihdr_data)
+        text = chunk(b"tEXt", text_meta)
+        idat = chunk(b"IDAT", idat_data)
+        iend = chunk(b"IEND", b"")
+        return sig + ihdr + text + idat + iend
+
+    old_dir = tmp_path / "old"
+    new_dir = tmp_path / "new"
+    old_dir.mkdir()
+    new_dir.mkdir()
+
+    # IDAT は同一、tEXt メタデータのみ異なる
+    old_png = make_png(b"Software\x00Matplotlib version3.10.6")
+    new_png = make_png(b"Software\x00Matplotlib version3.10.8")
+    (old_dir / "graph.png").write_bytes(old_png)
+    (new_dir / "graph.png").write_bytes(new_png)
+
+    assert old_png != new_png, "前提: バイトレベルでは異なること"
+
+    from scripts.output_diff import compare_folders
+    entries = compare_folders(old_dir, new_dir)
+    assert len(entries) == 1
+    assert entries[0].result == "Identical", f"IDAT同一のPNGはIdenticalであること: {entries[0].result}"
+
+
+
 
 def test_tc6_csv_output(tmp_path):
     """TC-6: --csv 指定時に CSV が生成される（ヘッダ・列数・utf-8-sig）。"""

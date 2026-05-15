@@ -1,6 +1,6 @@
 {
   "tool": "output_diff.py",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "purpose": "2つの OUTPUT フォルダを再帰的に比較し、WinMerge のフォルダ比較結果に相当する一覧を HTML または CSV で出力する。",
 
   "context": {
@@ -20,7 +20,8 @@
     "RQ-9": "差分ありファイルの行差分内容（unified diff）を HTML の詳細列に展開できること",
     "RQ-10": "HTML 出力時、diff 内容を外部 JS ファイル（{html名}_diffs/dN.js）に分離し、<details> 展開時に動的ロードすること（HTML 本体を軽量に保つ）",
     "RQ-11": "テキストファイルの行数が DIFF_MAX_LINES（1000行）を超える場合、先頭 1000 行のみ diff 生成し、超過した旨の Warning を末尾に付与すること",
-    "RQ-12": "画像ファイル（.png/.jpg/.jpeg/.gif/.bmp）の Different エントリは unified diff の代わりに旧・新を左右並べて表示し、片側のみ存在する場合は Empty プレースホルダを表示すること"
+    "RQ-12": "画像ファイル（.png/.jpg/.jpeg/.gif/.bmp）の Different エントリは unified diff の代わりに旧・新を左右並べて表示し、片側のみ存在する場合は Empty プレースホルダを表示すること",
+    "RQ-13": "PNG ファイルはバイト全体でなく IDAT チャンク（画像本体）のみを比較すること。tEXt チャンクに含まれる Matplotlib バージョン等のメタデータ差異は Identical と判定すること"
   },
 
   "cli": {
@@ -78,7 +79,13 @@
   "file_type_detection": {
     "binary_extensions": [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg", ".xlsx", ".zip", ".bin"],
     "image_extensions": [".png", ".jpg", ".jpeg", ".gif", ".bmp"],
-    "text_fallback": "拡張子が binary_extensions に含まれない場合はテキストとして扱い、デコードエラー時はバイナリとして再判定する"
+    "text_fallback": "拡張子が binary_extensions に含まれない場合はテキストとして扱い、デコードエラー時はバイナリとして再判定する",
+    "png_comparison": {
+      "method": "IDAT チャンク（画像本体）のみを比較する。バイト列全体の一致を14チェックの前に実施する。",
+      "ignored_chunks": "tEXt / tIME / tIME 等のメタデータチャンクは無視する",
+      "idat_parse_error": "IDAT 抽出が空の場合（PNG シグネチャ不正等）は Different と判定する",
+      "scope": ".png のみ。.jpg/.jpeg/.gif/.bmp はバイト全体比較のまま"
+    }
   },
 
   "output_columns": {
