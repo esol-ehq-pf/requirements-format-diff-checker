@@ -1,0 +1,159 @@
+{
+  "tool": "infsimyml_diff.py",
+  "version": "0.1.0",
+  "purpose": "2つの infsimyml ファイルを比較し、差分箇所のみを HTML（diff 形式）で出力する。フォーマット差分情報（ver1→ver3 の既知変化）を末尾に追記する。",
+
+  "context": {
+    "background": "ver1/ver2/ver2.1 の要件ファイルフォーマットを ver3 相当に統一する作業の一環。infsimyml の旧版（ver1）と新版（ver3）の差分を人間が確認しやすい形で提示する。",
+    "source_of_format_diff_info": "design/activity_plan.md の「推定原因」列および output/ver1_m02_diff.csv の 'infsimyml のフォーマット変更(1-①②③)' 記載内容"
+  },
+
+  "requirements": {
+    "RQ-1": "旧 infsimyml ファイルと新 infsimyml ファイルを CLI 引数で受け取ること",
+    "RQ-2": "差分箇所のみを抽出し JSON 形式の中間表現を生成すること",
+    "RQ-3": "差分を HTML ファイルに diff 形式（削除行: 赤, 追加行: 緑）で出力すること",
+    "RQ-4": "差分なしのセクション・エントリは HTML に表示しないこと",
+    "RQ-5": "HTML 末尾に既知フォーマット差分情報（1-①②③）を追記すること",
+    "RQ-6": "出力 HTML ファイル名を省略した場合は infsimyml_diff.html をカレントディレクトリに生成すること",
+    "RQ-7": "対象ファイルが存在しない場合は exit=1 で終了すること"
+  },
+
+  "cli": {
+    "command": "python3 scripts/infsimyml_diff.py",
+    "arguments": {
+      "--old": {
+        "required": true,
+        "type": "path",
+        "description": "旧 infsimyml ファイルパス（ver1 相当）"
+      },
+      "--new": {
+        "required": true,
+        "type": "path",
+        "description": "新 infsimyml ファイルパス（ver3 相当）"
+      },
+      "--out": {
+        "required": false,
+        "type": "path",
+        "default_when_omitted": "infsimyml_diff.html（カレントディレクトリ）",
+        "description": "出力 HTML ファイルパス"
+      }
+    },
+    "exit_codes": {
+      "0": "正常終了",
+      "1": "入力ファイルが存在しない、または YAML パースエラー"
+    },
+    "stdout_on_success": "差分抽出完了: {N} 件 → {out_path}  （標準出力に出力される）"
+  },
+
+  "processing": {
+    "step1_load": {
+      "description": "両ファイルを yaml.safe_load でロードする",
+      "error_handling": "FileNotFoundError / yaml.YAMLError は stderr に出力して exit=1"
+    },
+    "step2_extract_diff": {
+      "description": "セクション単位で差分を抽出し JSON 中間表現を生成する",
+      "sections": {
+        "simyml_version": {
+          "comparison": "スカラー値の単純比較",
+          "key": "（トップレベルスカラー）"
+        },
+        "VirtualProcessorDefinitions": {
+          "comparison": "VirtualProcessorID をキーとして辞書化し、フィールド単位で比較する",
+          "key_field": "VirtualProcessorID",
+          "diff_types": ["added", "removed", "changed"]
+        },
+        "CustomTaskDefinitions": {
+          "comparison": "TaskID をキーとして辞書化し、フィールド単位で比較する",
+          "key_field": "TaskID",
+          "diff_types": ["added", "removed", "changed"]
+        },
+        "TaskDefinitions": {
+          "comparison": "TaskID をキーとして辞書化し、フィールド単位で比較する",
+          "key_field": "TaskID",
+          "diff_types": ["added", "removed", "changed"],
+          "target_fields": ["TaskID", "RequirementCheckKey", "NodeName", "SdkComponentName", "AllocatedVirtualProcessorID", "BudgetKdmips", "AsilLevel", "PeriodMs", "WakeupNumberPer100Ms", "Power", "BootPhase"]
+        },
+        "SimulationPriorityMappings": {
+          "comparison": "リスト全体を YAML テキスト化して difflib.unified_diff で比較",
+          "key": "（インデックス順）"
+        },
+        "LaunchSets": {
+          "comparison": "リスト全体を YAML テキスト化して difflib.unified_diff で比較",
+          "key": "（インデックス順）"
+        }
+      },
+      "json_diff_entry_schema": {
+        "section": "セクション名（例: TaskDefinitions）",
+        "key": "エントリの識別子（例: VidDraw）",
+        "diff_type": "added | removed | changed",
+        "field": "変化したフィールド名（changed の場合）",
+        "old_val": "変化前の値（removed / changed の場合）",
+        "new_val": "変化後の値（added / changed の場合）"
+      }
+    },
+    "step3_html_output": {
+      "description": "差分 JSON を HTML に変換して出力する",
+      "structure": [
+        "ページタイトル: infsimyml diff: {old_filename} → {new_filename}",
+        "生成日時",
+        "差分サマリテーブル: セクション / 件数",
+        "セクションごとの差分テーブル（差分なしセクションは表示しない）",
+        "フォーマット差分情報セクション（末尾固定）"
+      ],
+      "diff_colors": {
+        "removed": "背景 #fdd（赤系）, 行頭 '- '",
+        "added": "背景 #dfd（緑系）, 行頭 '+ '",
+        "changed_old": "背景 #fdd, 行頭 '- '",
+        "changed_new": "背景 #dfd, 行頭 '+ '"
+      },
+      "encoding": "utf-8"
+    },
+    "step4_format_diff_annotation": {
+      "description": "HTML 末尾に既知フォーマット差分情報を追記する",
+      "source": "スクリプト内ハードコード（将来的に外部 YAML 化も可）",
+      "content": [
+        {
+          "id": "1-①",
+          "title": "PFタスク NodeName 変更",
+          "reason": "要件チェックツール_要件更新作業の負担軽減活動に沿った変更",
+          "examples": [
+            "VidDraw → viddraw",
+            "ViewRdr_CIREND(1SoC, BGM) → viewrdr_cirend",
+            "ViewRdr_SCRM(1SoC, BGM) → viewrdr_scrm",
+            "ViewRdr_UIREND(1SoC, BGM) → viewrdr_uirend",
+            "pf_1ms_base → PF_1msTask(2SoC, Base)",
+            "pf_1ms_mid → PF_1msTask(2SoC, Mid)"
+          ]
+        },
+        {
+          "id": "1-②",
+          "title": "PFタスク RequirementCheckKey 変更",
+          "reason": "SWA ツールの都合",
+          "examples": [
+            "VidDraw → viddraw"
+          ]
+        },
+        {
+          "id": "1-③",
+          "title": "全パターンの PF_window を記載",
+          "reason": "SWA ツールの都合",
+          "examples": [
+            "PF_window1(BASE_PLUS, BaseCa0) などが TaskDefinitions に追加"
+          ]
+        }
+      ]
+    }
+  },
+
+  "output": {
+    "file": "HTML ファイル（--out 引数で指定、省略時 infsimyml_diff.html）",
+    "encoding": "utf-8",
+    "zero_diff_behavior": "差分が 0 件の場合でも HTML を生成する（「差分なし」と表示）"
+  },
+
+  "notes": [
+    "infsimyml は YAML フォーマット。yaml.safe_load で読み込む",
+    "TaskDefinitions のキー重複（同一 TaskID が複数存在する場合）は先勝ちルールを適用",
+    "LaunchSets / SimulationPriorityMappings は構造が複雑なため difflib.unified_diff でテキスト差分を表示する（フィールド単位の比較は行わない）"
+  ]
+}

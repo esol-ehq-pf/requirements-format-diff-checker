@@ -1,0 +1,158 @@
+{
+  "tool": "output_diff.py",
+  "version": "0.1.0",
+  "purpose": "2つの OUTPUT フォルダを再帰的に比較し、WinMerge のフォルダ比較結果に相当する一覧を HTML または CSV で出力する。",
+
+  "context": {
+    "background": "ver1/ver2/ver2.1 の各バリアントに対して、旧解析結果フォルダと新解析結果フォルダを比較し、どのファイルが異なるかを一覧で把握する。",
+    "reference": "WinMerge 2.16 Manual - Comparing and merging folders (https://manual.winmerge.org/en/Compare_dirs)"
+  },
+
+  "requirements": {
+    "RQ-1": "旧フォルダ（--old）と新フォルダ（--new）を CLI 引数で指定できること",
+    "RQ-2": "フォルダを再帰的に比較し、全ファイル・サブフォルダを対象とすること",
+    "RQ-3": "比較結果を WinMerge の Comparison Result に相当する分類で表現すること",
+    "RQ-4": "テキストファイルは行単位の差分（unified diff 相当）で比較すること",
+    "RQ-5": "バイナリファイルはバイト比較（同一 / 異なる）で判定すること",
+    "RQ-6": "出力形式を --html または --csv で切り替えられること（デフォルト: --html）",
+    "RQ-7": "出力ファイル名を --out で指定できること（省略時はデフォルトファイル名）",
+    "RQ-8": "対象フォルダが存在しない場合は exit=1 で終了すること",
+    "RQ-9": "差分ありファイルの行差分内容（unified diff）を HTML の詳細列に展開できること"
+  },
+
+  "cli": {
+    "command": "python3 scripts/output_diff.py",
+    "arguments": {
+      "--old": {
+        "required": true,
+        "type": "path",
+        "description": "旧解析結果フォルダパス（例: input/scheduling_requirement_check_analysis_result）"
+      },
+      "--new": {
+        "required": true,
+        "type": "path",
+        "description": "新解析結果フォルダパス（例: input/ver1_m02_AP_再解析結果/output）"
+      },
+      "--html": {
+        "required": false,
+        "type": "flag",
+        "description": "HTML 形式で出力する（--csv と排他。どちらも未指定の場合は --html が適用される）"
+      },
+      "--csv": {
+        "required": false,
+        "type": "flag",
+        "description": "CSV 形式で出力する（--html と排他）"
+      },
+      "--out": {
+        "required": false,
+        "type": "path",
+        "default_when_omitted_html": "output_diff.html（カレントディレクトリ）",
+        "default_when_omitted_csv": "output_diff.csv（カレントディレクトリ）",
+        "description": "出力ファイルパス"
+      }
+    },
+    "exit_codes": {
+      "0": "正常終了",
+      "1": "入力フォルダが存在しない、または --html / --csv の両方を同時指定した場合"
+    },
+    "stdout_on_success": "比較完了: {N} 件 → {out_path}  （標準出力に出力される）"
+  },
+
+  "comparison_result_categories": {
+    "description": "WinMerge の Comparison Result 列に相当する分類。",
+    "values": {
+      "Identical": "両フォルダに存在し、内容が完全に同一のファイル（テキスト・バイナリ共通）",
+      "Different": "両フォルダに存在するが、内容が異なるファイル（テキスト: 行差分あり / バイナリ: バイト差分あり）",
+      "Left only": "旧フォルダ（--old）にのみ存在するファイルまたはフォルダ",
+      "Right only": "新フォルダ（--new）にのみ存在するファイルまたはフォルダ"
+    },
+    "notes": [
+      "Skipped（フィルタ除外）は本ツールでは使用しない",
+      "フォルダ自体は 'Left only folder' / 'Right only folder' として記録する（再帰モード時）"
+    ]
+  },
+
+  "file_type_detection": {
+    "binary_extensions": [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg", ".xlsx", ".zip", ".bin"],
+    "text_fallback": "拡張子が binary_extensions に含まれない場合はテキストとして扱い、デコードエラー時はバイナリとして再判定する"
+  },
+
+  "output_columns": {
+    "description": "WinMerge のデフォルト表示列に準拠。",
+    "columns": [
+      {
+        "name": "ファイル名",
+        "description": "比較対象のファイル名（フォルダ名）",
+        "winmerge_equivalent": "Filename"
+      },
+      {
+        "name": "フォルダ",
+        "description": "比較ルートからの相対フォルダパス（ルート直下は空文字）",
+        "winmerge_equivalent": "Folder"
+      },
+      {
+        "name": "比較結果",
+        "description": "Identical / Different / Left only / Right only",
+        "winmerge_equivalent": "Comparison Result"
+      },
+      {
+        "name": "旧更新日時",
+        "description": "旧フォルダ側のファイル更新日時（Left only / Identical / Different の場合）。Right only の場合は空",
+        "winmerge_equivalent": "Left Date"
+      },
+      {
+        "name": "新更新日時",
+        "description": "新フォルダ側のファイル更新日時（Right only / Identical / Different の場合）。Left only の場合は空",
+        "winmerge_equivalent": "Right Date"
+      },
+      {
+        "name": "拡張子",
+        "description": "ファイルの拡張子（フォルダの場合は空）",
+        "winmerge_equivalent": "Extension"
+      }
+    ]
+  },
+
+  "html_output": {
+    "structure": [
+      "ページタイトル: output diff: {old_folder} → {new_folder}",
+      "生成日時",
+      "サマリテーブル: 比較結果の種別ごとの件数",
+      "全ファイル一覧テーブル（比較結果列でソート: Different → Left only → Right only → Identical）",
+      "Different ファイルの行差分詳細（折りたたみ展開: <details> タグ使用）"
+    ],
+    "row_colors": {
+      "Different": "背景 #fff3cd（黄系）",
+      "Left only": "背景 #f8d7da（赤系）",
+      "Right only": "背景 #d4edda（緑系）",
+      "Identical": "背景 #ffffff（白）"
+    },
+    "diff_detail": {
+      "description": "テキストファイルの Different 行に unified diff を展開表示する",
+      "removed_line_color": "背景 #fdd（赤系）",
+      "added_line_color": "背景 #dfd（緑系）",
+      "context_lines": 3
+    },
+    "encoding": "utf-8"
+  },
+
+  "csv_output": {
+    "columns": ["ファイル名", "フォルダ", "比較結果", "旧更新日時", "新更新日時", "拡張子"],
+    "encoding": "utf-8-sig（BOM 付き: Excel で文字化けしない）",
+    "note": "CSV には行差分の詳細は含めない"
+  },
+
+  "processing": {
+    "step1": "両フォルダを os.walk で再帰的に列挙し、全パス一覧を取得する",
+    "step2": "旧・新のファイルセットを比較し Left only / Right only / 共通 に分類する",
+    "step3": "共通ファイルについて、テキスト / バイナリを判定して比較し Identical / Different に分類する",
+    "step4": "Different なテキストファイルの unified diff を生成する（difflib.unified_diff）",
+    "step5": "全エントリを output_columns の形式で一覧化し、HTML または CSV に出力する"
+  },
+
+  "notes": [
+    "再帰モード固定（サブフォルダを常に含める）",
+    "ファイル名の大文字小文字は OS の規則に従う（Linux は case-sensitive）",
+    "テキストファイルのエンコードは UTF-8 を試み、失敗時は Shift-JIS → latin-1 の順でフォールバックする"
+  ]
+}

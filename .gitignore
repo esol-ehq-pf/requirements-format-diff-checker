@@ -1,6 +1,9 @@
 # 解析データ（大容量・顧客データのため除外）
 input/
 
+# 成果物（生成物・顧客提出データのため除外）
+output/
+
 # Windows Zone.Identifier
 *.Zone.Identifier
 *:Zone.Identifier
