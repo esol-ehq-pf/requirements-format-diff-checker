@@ -1,13 +1,11 @@
 {
   "tool": "output_diff.py",
-  "version": "0.3.1",
-  "purpose": "2つの OUTPUT フォルダを再帰的に比較し、WinMerge のフォルダ比較結果に相当する一覧を HTML または CSV で出力する。",
-
+  "version": "0.5.0",
+  "purpose": "2つの OUTPUT フォルダを再帰的に比較し、WinMerge のフォルダ比較結果に相当する一覧を HTML または CSV で出力する。アノテーション JSON と連携して差分理由をバッジ表示する。",
   "context": {
     "background": "ver1/ver2/ver2.1 の各バリアントに対して、旧解析結果フォルダと新解析結果フォルダを比較し、どのファイルが異なるかを一覧で把握する。",
     "reference": "WinMerge 2.16 Manual - Comparing and merging folders (https://manual.winmerge.org/en/Compare_dirs)"
   },
-
   "requirements": {
     "RQ-1": "旧フォルダ（--old）と新フォルダ（--new）を CLI 引数で指定できること",
     "RQ-2": "フォルダを再帰的に比較し、全ファイル・サブフォルダを対象とすること",
@@ -21,9 +19,58 @@
     "RQ-10": "HTML 出力時、diff 内容を外部 JS ファイル（{html名}_diffs/dN.js）に分離し、<details> 展開時に動的ロードすること（HTML 本体を軽量に保つ）",
     "RQ-11": "テキストファイルの行数が DIFF_MAX_LINES（1000行）を超える場合、先頭 1000 行のみ diff 生成し、超過した旨の Warning を末尾に付与すること",
     "RQ-12": "画像ファイル（.png/.jpg/.jpeg/.gif/.bmp）の Different エントリは unified diff の代わりに旧・新を左右並べて表示し、片側のみ存在する場合は Empty プレースホルダを表示すること",
-    "RQ-13": "PNG ファイルはバイト全体でなく IDAT チャンク（画像本体）のみを比較すること。tEXt チャンクに含まれる Matplotlib バージョン等のメタデータ差異は Identical と判定すること"
+    "RQ-13": "PNG ファイルはバイト全体でなく IDAT チャンク（画像本体）のみを比較すること。tEXt チャンクに含まれる Matplotlib バージョン等のメタデータ差異は Identical と判定すること",
+    "RQ-14": "HTML 出力時、Different ファイルを対象としたアノテーション JSON スケルトン（{html名}_annotations.json）を自動生成すること。既存ファイルがある場合は新規エントリのみ追加し、既存エントリ（reason 等）は保持すること",
+    "RQ-15": "アノテーション JSON が存在する場合、その内容を HTML に反映し、差分列の上部に details バッジ（青）および reason バッジ（黄）を表示すること",
+    "RQ-16": "HTML の diff 詳細は unified 表示（デフォルト）と左右 split 表示を切り替えられること。split 表示ではボタン「⇔ 左右表示」/ 「≡ 差分表示」でトグルする",
+    "RQ-17": "split 表示の各コードセグメントで、旧ペイン・新ペインが独立して横スクロールでき、かつ横スクロールは左右同期すること。縦方向は最大高さ 480px の共通スクロール窓で表示すること",
+    "RQ-18": "split 表示において、対応する旧行・新行が存在する場合は difflib.SequenceMatcher による文字レベルの差分をハイライト表示すること。旧側の差分文字は濃い赤（#f77）、新側の差分文字は濃い緑（#4d4）の背景色で強調する"
   },
-
+  "workflow": {
+    "description": "差分の検出・理由付け・記録を4段階で行う。各ツールの責務を明確に分離する。",
+    "steps": [
+      {
+        "step": 1,
+        "tool": "output_diff.py",
+        "command": "python3 scripts/output_diff.py --old OLD --new NEW --out output/foo.html",
+        "responsibility": "ファイル単位の差分有無を検出する",
+        "outputs": [
+          "output/foo.html（差分一覧・バッジなし）",
+          "output/foo_annotations.json（Different ファイルのスケルトン。reason='' / details=[]）"
+        ]
+      },
+      {
+        "step": 2,
+        "tool": "annotate_diff.py（新設予定）",
+        "command": "python3 scripts/annotate_diff.py --old OLD --new NEW --annotations output/foo_annotations.json",
+        "responsibility": "差分の理由付けを行う（自動＋手動の2段階）",
+        "auto_part": "既知パターンをルールベース（annotate_rules.json）で検索し details: に書き込む",
+        "manual_part": "_annotations.json の reason: フィールドをユーザーが直接テキストエディタで記入する",
+        "outputs": [
+          "output/foo_annotations.json（details: 補完済み。reason: は手動記入待ち）"
+        ]
+      },
+      {
+        "step": 3,
+        "tool": "output_diff.py（再実行）",
+        "command": "python3 scripts/output_diff.py --old OLD --new NEW --out output/foo.html",
+        "responsibility": "_annotations.json を読み込んでバッジ付き HTML を生成する",
+        "outputs": [
+          "output/foo.html（details バッジ・reason バッジ付き）"
+        ]
+      },
+      {
+        "step": 4,
+        "tool": "extract_and_write_diff.py（整理後）",
+        "command": "python3 scripts/extract_and_write_diff.py --annotations output/foo_annotations.json --xlsx FILE.xlsx",
+        "responsibility": "_annotations.json の内容を Excel / CSV に転記する",
+        "outputs": [
+          "Excel『Output差分』シート",
+          "または CSV ファイル"
+        ]
+      }
+    ]
+  },
   "cli": {
     "command": "python3 scripts/output_diff.py",
     "arguments": {
@@ -53,6 +100,12 @@
         "default_when_omitted_html": "output_diff.html（カレントディレクトリ）",
         "default_when_omitted_csv": "output_diff.csv（カレントディレクトリ）",
         "description": "出力ファイルパス"
+      },
+      "--annotations": {
+        "required": false,
+        "type": "path",
+        "default_when_omitted": "<out_stem>_annotations.json を自動参照する",
+        "description": "アノテーション JSON ファイルパス（--html 時のみ有効）。省略時は --out と同じディレクトリの {html名}_annotations.json を参照する"
       }
     },
     "exit_codes": {
@@ -61,7 +114,6 @@
     },
     "stdout_on_success": "比較完了: {N} 件 → {out_path}  （標準出力に出力される）"
   },
-
   "comparison_result_categories": {
     "description": "WinMerge の Comparison Result 列に相当する分類。",
     "values": {
@@ -75,10 +127,25 @@
       "フォルダ自体は 'Left only folder' / 'Right only folder' として記録する（再帰モード時）"
     ]
   },
-
   "file_type_detection": {
-    "binary_extensions": [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg", ".xlsx", ".zip", ".bin"],
-    "image_extensions": [".png", ".jpg", ".jpeg", ".gif", ".bmp"],
+    "binary_extensions": [
+      ".png",
+      ".jpg",
+      ".jpeg",
+      ".gif",
+      ".bmp",
+      ".svg",
+      ".xlsx",
+      ".zip",
+      ".bin"
+    ],
+    "image_extensions": [
+      ".png",
+      ".jpg",
+      ".jpeg",
+      ".gif",
+      ".bmp"
+    ],
     "text_fallback": "拡張子が binary_extensions に含まれない場合はテキストとして扱い、デコードエラー時はバイナリとして再判定する",
     "png_comparison": {
       "method": "IDAT チャンク（画像本体）のみを比較する。バイト列全体の一致を14チェックの前に実施する。",
@@ -87,7 +154,6 @@
       "scope": ".png のみ。.jpg/.jpeg/.gif/.bmp はバイト全体比較のまま"
     }
   },
-
   "output_columns": {
     "description": "WinMerge のデフォルト表示列に準拠。",
     "columns": [
@@ -123,7 +189,6 @@
       }
     ]
   },
-
   "html_output": {
     "structure": [
       "ページタイトル: output diff: {old_folder} → {new_folder}",
@@ -152,7 +217,37 @@
       "removed_line_color": "背景 #fdd（赤系）",
       "added_line_color": "背景 #dfd（緑系）",
       "warning_line_color": "背景 #fff3cd、文字 #856404（黄系）— 上限超過時の Warning 行に適用",
-      "context_lines": 3
+      "context_lines": 3,
+      "split_view": {
+        "description": "unified ビューと切り替え可能な左右 split 表示。同一の <details> 内に data-view='unified' / data-view='split' div を保持し、toggleSplit() JS 関数でどちらかを display:none にして切り替える",
+        "structure": [
+          "固定ヘッダ行（旧 / 新 ラベル、position:sticky で常時表示）",
+          "バッジ行・hunk ヘッダ（@@ 行）・ファイルヘッダ（--- / +++ 行）は全幅 div で表示",
+          "--- / +++ 行（ファイルパス）は split ビューでは非表示（冗長なため省略）",
+          "コードセグメント: 旧ペイン（overflow-x:auto）| 新ペイン（overflow-x:auto）を display:flex で並列"
+        ],
+        "scroll": {
+          "vertical": "外側 div に max-height:480px; overflow-y:auto を設定。コンテンツが収まる場合は縮小表示",
+          "horizontal": "各コードセグメントのペインが独立して overflow-x:auto でスクロール。onscroll イベントで syncScrollX() が相手ペインの scrollLeft を同期する",
+          "page_horizontal": "body に overflow-x:hidden; max-width:100vw を設定し、ページ全体の横スクロールを抑制"
+        },
+        "line_height_alignment": {
+          "mechanism": "片側のみ存在する行（挿入のみ / 削除のみ）には対向側に &nbsp; を含む空行を挿入し、行高さを保証する",
+          "padding_background": "#f5f5f5（薄いグレー）"
+        },
+        "char_diff": {
+          "trigger": "旧行・新行の両方が存在する対応ペアの場合のみ適用",
+          "algorithm": "difflib.SequenceMatcher(autojunk=False) で文字レベルの opcode を取得",
+          "highlight_old": "replace / delete タグの文字 → background:#f77（濃い赤）",
+          "highlight_new": "replace / insert タグの文字 → background:#4d4（濃い緑）",
+          "no_char_diff": "片側のみ存在する行は行全体が挿入 / 削除扱いのため文字レベルハイライトは適用しない"
+        },
+        "toggle_button": {
+          "initial_label": "⇔ 左右表示",
+          "toggled_label": "≡ 差分表示",
+          "position": "diff 詳細の右上（text-align:right）"
+        }
+      }
     },
     "diff_max_lines": {
       "limit": 1000,
@@ -161,7 +256,13 @@
       "warning_placement": "diff_lines の末尾に追加され、JS ファイルに含まれる"
     },
     "image_comparison": {
-      "target_extensions": [".png", ".jpg", ".jpeg", ".gif", ".bmp"],
+      "target_extensions": [
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".bmp"
+      ],
       "description": "image_extensions に該当するファイルは unified diff の代わりに左右比較テーブルを表示する",
       "element": "<details>（summary: '画像を表示'）内に <table> で旧・新を左右配置",
       "img_src": "os.path.relpath() で HTML ファイルからの相対パスを生成（ブラウザで直接参照可能）",
@@ -172,15 +273,68 @@
       "mechanism": "click イベントで summary の getBoundingClientRect().top を記録し、requestAnimationFrame で展開後に scrollBy(0, diff) を実行",
       "scope": "全 <details>（フォルダ折り畳み・画像比較・ diff lazy-load）に適用"
     },
+    "annotation_badges": {
+      "description": "_annotations.json が存在する場合、Different ファイルの差分列の上部にバッジを表示する",
+      "details_badge": {
+        "trigger": "entry.details リストが1件以上ある場合",
+        "style": "青背景（#cfe2ff）・青枠（#9ec5fe）・📋アイコン",
+        "content": "diff_type の値",
+        "tooltip": "cause の値（cause が空でない場合）を title 属性として表示"
+      },
+      "reason_badge": {
+        "trigger": "entry.reason が空でない場合",
+        "style": "黄背景（#fff3cd）・黄枠（#ffc107）・📝アイコン",
+        "content": "reason の値（ユーザーが手動記入したテキスト）"
+      }
+    },
     "encoding": "utf-8"
   },
-
+  "annotation_json": {
+    "filename": "{html名}_annotations.json（出力 HTML と同じディレクトリ）",
+    "description": "差分ファイルごとの理由付け情報を保持する JSON ファイル。output_diff.py がスケルトンを生成し、annotate_diff.py が details: を補完する。reason: はユーザーが手動記入する。",
+    "schema": {
+      "_comment": "文字列。ファイルの説明（自動生成）",
+      "entries": {
+        "description": "キー: ファイルの相対パス（folder/name 形式。ルート直下は name のみ）",
+        "value_schema": {
+          "folder": "フォルダ名（ルート直下は空文字）",
+          "file": "ファイル名",
+          "reason": "ユーザーが手動記入する差分理由。output_diff.py は上書きしない。annotate_diff.py も上書きしない。",
+          "details": [
+            {
+              "diff_type": "差分の種類（例: pf_1ms_base行の消失）",
+              "old_val": "旧値",
+              "new_val": "新値",
+              "cause": "推定原因（既知の場合。未特定の場合は空文字）",
+              "hunk_pattern": "正規表現パターン。diff hunk 内の +/- 行に re.search でマッチすれば、その hunk 直前にバッジバーを表示する。空文字の場合はファイルレベルバッジのみ（hunk バッジなし）。annotate_diff.py または write_annotations_json() が自動推定して書き込む。"
+            }
+          ]
+        }
+      }
+    },
+    "key_format": {
+      "root_file": "input_info.txt（フォルダなし）",
+      "subfolder_file": "temp/before_requirements.csv（folder/name 形式）"
+    },
+    "lifecycle": {
+      "created_by": "output_diff.py --html（Different ファイルのスケルトンを生成）",
+      "details_filled_by": "annotate_diff.py（自動ルールマッチ）",
+      "reason_filled_by": "ユーザーが手動でテキストエディタから記入",
+      "read_by": "output_diff.py --html（バッジ表示）・extract_and_write_diff.py（Excel/CSV 転記）"
+    }
+  },
   "csv_output": {
-    "columns": ["ファイル名", "フォルダ", "比較結果", "旧更新日時", "新更新日時", "拡張子"],
+    "columns": [
+      "ファイル名",
+      "フォルダ",
+      "比較結果",
+      "旧更新日時",
+      "新更新日時",
+      "拡張子"
+    ],
     "encoding": "utf-8-sig（BOM 付き: Excel で文字化けしない）",
     "note": "CSV には行差分の詳細は含めない"
   },
-
   "processing": {
     "step1": "両フォルダを os.walk で再帰的に列挙し、全パス一覧を取得する",
     "step2": "旧・新のファイルセットを比較し Left only / Right only / 共通 に分類する",
@@ -189,13 +343,49 @@
     "step5": "全エントリを output_columns の形式で一覧化し、HTML または CSV に出力する",
     "step6_html_only": "HTML 出力時: diff 内容を {html名}_diffs/dN.js に書き出し、HTML 本体にはプレースホルダ <details> のみ記述する"
   },
-
+  "planned_tools": {
+    "annotate_diff.py": {
+      "status": "設計中（未実装）",
+      "purpose": "差分の理由付けを行う専用ツール。output_diff.py（差分有無の検出）と extract_and_write_diff.py（Excel/CSV 転記）の間に位置する。",
+      "requirements": {
+        "RQ-A1": "旧・新フォルダと _annotations.json を入力として受け取ること",
+        "RQ-A2": "差分の理由付けを自動部分と手動部分の2段階で行うこと。自動部分は annotate_rules.json に定義したルールベースで検索し details: に書き込む。手動部分は reason: フィールドをユーザーが直接テキストエディタで記入する（ツールは触らない）",
+        "RQ-A3": "既知パターンのルールを外部 JSON（annotate_rules.json）に定義し、コードを変更せずにルールを追加・修正できること",
+        "RQ-A4": "検出できなかった（details: が空のまま）エントリを一覧表示し、手動記入が必要な箇所をユーザーに通知すること",
+        "RQ-A5": "既存の reason: フィールドは上書きしないこと（手動記入を保護する）",
+        "RQ-A6": "--dry-run で書き込まずに検出結果のみ表示できること"
+      },
+      "annotate_rules_json": {
+        "purpose": "ルールを外出しにして、コード変更なしにパターン追加を可能にする",
+        "rule_schema": {
+          "file": "対象ファイルの相対パス（例: input_data_ba.csv）",
+          "condition": {
+            "type": "line_disappeared | line_added | column_value_changed | header_changed",
+            "pattern": "検索文字列または正規表現"
+          },
+          "diff_type": "差分概要の文言（例: pf_1ms_base行の消失）",
+          "old_val": "旧値の文言テンプレート",
+          "new_val": "新値の文言テンプレート",
+          "cause": "推定原因の文言（既知の場合。未特定の場合は空文字）"
+        },
+        "note": "新バリアント（ver2/ver2.1）で未知パターンが現れた場合は JSON にルールを追記するだけで対応できる"
+      }
+    },
+    "extract_and_write_diff.py（整理後）": {
+      "status": "設計中（現状は理由付けロジックを内包している）",
+      "requirements": {
+        "RQ-E1": "extract_* 関数群（理由付けロジック）を annotate_diff.py に移植し、Excel/CSV 書き込み専用とすること",
+        "RQ-E2": "入力を _annotations.json から読む方式に変更すること（現在の --old/--new による直接読み込みは不要にする）"
+      },
+      "migration_timing": "次のバリアント（ver1 b01 等）が届いて新パターン追加が発生したタイミングで実施する"
+    }
+  },
   "notes": [
     "再帰モード固定（サブフォルダを常に含める）",
     "ファイル名の大文字小文字は OS の規則に従う（Linux は case-sensitive）",
     "テキストファイルのエンコードは UTF-8 を試み、失敗時は Shift-JIS → latin-1 の順でフォールバックする",
-    "HTML 出力と _diffs/ フォルダはセットで保管・共有すること（_diffs/ が欠けると差分表示できない）",
-    "extract_and_write_diff.py との連携懸案 NG-A: temp/ フォルダの表記が Excel 上 'tmp' と異なる（未解決）",
-    "extract_and_write_diff.py との連携懸案 W-B: 画像ファイルのリネーム（内容同一・ファイル名変更）は Different でなく Left only + Right only として検出される（スコープ外）"
+    "HTML 出力・_diffs/ フォルダ・_annotations.json はセットで保管・共有すること",
+    "_annotations.json の folder キーは output_diff.py 側は実際のパス（temp/）、extract_and_write_diff.py 側は Excel 表記（tmp）で異なる点に注意（write_annotations_json 内の folder_map で変換）",
+    "画像ファイルのリネーム（内容同一・ファイル名変更）は Different でなく Left only + Right only として検出される（スコープ外）"
   ]
 }

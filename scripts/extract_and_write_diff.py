@@ -636,6 +636,112 @@ def extract_all(old_dir: Path, new_dir: Path) -> tuple[list[dict], dict]:
 
 
 # ──────────────────────────────────────────
+# アノテーション JSON 書き込み
+# ──────────────────────────────────────────
+
+def _annotation_key(folder: str, file_: str) -> str:
+    """(folder, file) を output_diff.py のアノテーションキー形式に正規化する。
+    folder: "-" → "" (ルート直下), "tmp" → "temp" (実際のディレクトリ名)
+    file_: 拡張子なし → .csv を付与"""
+    folder_map = {"-": "", "tmp": "temp"}
+    f = folder_map.get(folder, folder)
+    fn = file_ if "." in file_ else file_ + ".csv"
+    return fn if not f else f"{f}/{fn}"
+
+
+def _infer_hunk_pattern(e: dict) -> str:
+    """diff_type ・ old_val ・ new_val からヒューリスティックに hunk_pattern を推定する。
+    返値は正規表現文字列（該当する hunk の +/- 行に対して re.search でマッチ）。"""
+    diff_type = e.get("diff_type", "")
+    old_val   = (e.get("old_val")  or "").strip()
+    new_val   = (e.get("new_val")  or "").strip()
+
+    # pf_1ms 行の消失
+    if "pf_1ms_base" in diff_type or "pf_1ms_base" in new_val:
+        return "pf_1ms_base"
+    if "pf_1ms_mid" in diff_type or "pf_1ms_mid" in new_val:
+        return "pf_1ms_mid"
+    # PF_window 追加
+    if "PF_window" in new_val or "PF_window" in diff_type:
+        return r"PF_window"
+    # NodeName 変化: old_val が具体的なノード名
+    if "NodeName" in diff_type and old_val and old_val not in ("-",):
+        return re.escape(old_val)
+    # id/name 変化
+    if "id/name" in diff_type and old_val and old_val not in ("-",):
+        return re.escape(old_val)
+    # RequirementId 変化
+    if "RequirementId" in diff_type and old_val and old_val not in ("-",):
+        return re.escape(old_val)
+    # RequirementOwner 変化
+    if "RequirementOwner" in diff_type and old_val and old_val not in ("-",):
+        return re.escape(old_val)
+    # TaskList 変化: バリアントサフィックスの値にマッチ
+    if "TaskList" in diff_type:
+        return r"\((?:b01_|m01_|m02_|b01_m01_m02|m01_m02)"
+    # キーの追加 (例: Fsync Target)
+    if "キーの追加" in diff_type:
+        return "Target"
+    # 入力ファイルの差分: Tool バージョン行
+    if "入力ファイルの差分" in diff_type and "要件チェックツール" in new_val:
+        return r"Tool "
+    if "入力ファイルの差分" in diff_type and "要件ファイル" in new_val:
+        return r"chksimyml:"
+    # 列ヘッダ変化 / Sequence 変化 / mid 行時刻値変化: 全行変化で特定困難 → 空文字
+    return ""
+
+
+def write_annotations_json(entries: list[dict], out_path: Path) -> None:
+    """extract_all() の結果をアノテーション JSON に書き込む。
+    既存の reason: フィールドは保持し、details: のみ上書きする。"""
+    import json
+    data: dict = {}
+    if out_path.exists():
+        try:
+            data = json.loads(out_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            pass
+    if "_comment" not in data:
+        data["_comment"] = (
+            "output_diff アノテーション。"
+            "reason フィールドを手動編集可能。"
+            "details は extract_and_write_diff.py --annotations-out で自動補完。"
+        )
+    if "entries" not in data:
+        data["entries"] = {}
+
+    # エントリをキー別にグループ化
+    grouped: dict[str, list[dict]] = {}
+    for e in entries:
+        key = _annotation_key(e["folder"], e["file"])
+        grouped.setdefault(key, []).append(e)
+
+    for key, group in grouped.items():
+        entry_data = data["entries"].setdefault(key, {
+            "folder": group[0]["folder"],
+            "file": group[0]["file"],
+            "reason": "",
+        })
+        # reason は保持、details を上書き
+        entry_data["details"] = [
+            {
+                "diff_type": e.get("diff_type", ""),
+                "old_val":   e.get("old_val", ""),
+                "new_val":   e.get("new_val", ""),
+                "cause":     e.get("cause") or "",
+                "hunk_pattern": _infer_hunk_pattern(e),
+            }
+            for e in group
+        ]
+
+    out_path.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    print(f"  アノテーション JSON 更新: {out_path} ({len(grouped)} エントリ)")
+
+
+# ──────────────────────────────────────────
 # CSV 書き込み
 # ──────────────────────────────────────────
 
@@ -753,6 +859,13 @@ def main():
         metavar="FILE",
         help="差分エントリを CSV ファイルに出力する。ファイル名省略時は diff_output.csv に出力（Excel 書き込みは行わない）",
     )
+    parser.add_argument(
+        "--annotations-out",
+        default=None,
+        metavar="FILE",
+        help="抽出した差分理由を output_diff アノテーション JSON に書き込む。"
+             "output_diff.py が生成した <html>_annotations.json を指定する。",
+    )
     args = parser.parse_args()
 
     old_dir = Path(args.old)
@@ -798,6 +911,9 @@ def main():
         written = write_to_excel(xlsx_path, args.project, args.variant, entries, args.dry_run)
         if not args.dry_run:
             print(f"  Excel転記完了: {written} 件")
+
+    if args.annotations_out is not None:
+        write_annotations_json(entries, Path(args.annotations_out))
 
 
 if __name__ == "__main__":

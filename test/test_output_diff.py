@@ -273,7 +273,7 @@ def test_tc5_html_output(tmp_path):
     assert out.exists()
 
     content = out.read_text(encoding="utf-8")
-    assert "<table>" in content
+    assert "<table" in content
     # 行色確認
     assert "#fff3cd" in content   # Different
     assert "#f8d7da" in content   # Left only

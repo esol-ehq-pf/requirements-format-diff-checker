@@ -14,6 +14,7 @@ import difflib
 import html
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -261,27 +262,375 @@ def write_csv(entries: list[DiffEntry], out_path: Path) -> int:
 # HTML 出力（IT-4/IT-5 で実装予定）
 # ──────────────────────────────────────────
 
-def _write_diff_js(entry: DiffEntry, key: str, diffs_dir: Path) -> str:
+def load_annotations(path: Path) -> dict[str, dict]:
+    """アノテーション JSON を読み込んで {key: entry_dict} を返す。"""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data.get("entries", {})
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def write_annotations_skeleton(entries: list[DiffEntry], out_path: Path) -> None:
+    """Different ファイルのアノテーション JSON スケルトンを書き出す。
+    既存ファイルがある場合は新規エントリのみ追加し、既存エントリ（reason 等）は保持する。"""
+    data: dict = {}
+    if out_path.exists():
+        try:
+            data = json.loads(out_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            pass
+    if "_comment" not in data:
+        data["_comment"] = (
+            "output_diff アノテーション。"
+            "reason フィールドを手動編集可能。"
+            "details は extract_and_write_diff.py --annotations-out で自動補完。"
+        )
+    if "entries" not in data:
+        data["entries"] = {}
+
+    changed = False
+    for e in entries:
+        if e.result != "Different":
+            continue
+        key = e.name if not e.folder else f"{e.folder}/{e.name}"
+        if key not in data["entries"]:
+            data["entries"][key] = {
+                "folder": e.folder,
+                "file": e.name,
+                "reason": "",
+                "details": [],
+            }
+            changed = True
+
+    if changed or not out_path.exists():
+        out_path.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        print(f"  アノテーション JSON: {out_path}")
+
+
+def _write_diff_js(entry: DiffEntry, key: str, diffs_dir: Path,
+                   annot_details: list[dict] | None = None) -> str:
     """unified diff 内容を外部 JS ファイルに書き出し、プレースホルダ <details> HTML を返す。
-    呼び出し側が diffs_dir を事前に作成しておくこと。"""
-    lines_html: list[str] = []
+    呼び出し側が diffs_dir を事前に作成しておくこと。
+    unified diff と左右並列（split）の両ビューをトグルボタンで切り替え可能。
+    hunk_pattern にマッチした hunk 直前にバッジを表示。"""
+
+    # パターン→詳細のマッピング構築
+    pattern_details: list[tuple] = []
+    if annot_details:
+        for d in annot_details:
+            p = (d.get("hunk_pattern") or "").strip()
+            if p:
+                try:
+                    pattern_details.append((re.compile(p), d))
+                except re.error:
+                    pattern_details.append((re.compile(re.escape(p)), d))
+
+    # hunk インデックス → マッチした details のマッピング
+    hunk_idx = -1
+    hunk_matches: dict[int, list[dict]] = {}
     for line in entry.diff_lines:
+        if line.startswith("@@"):
+            hunk_idx += 1
+            hunk_matches[hunk_idx] = []
+        elif hunk_idx >= 0 \
+                and (line.startswith("+") or line.startswith("-")) \
+                and not line.startswith(("---", "+++")):
+            for pat, d in pattern_details:
+                if pat.search(line[1:]) and d not in hunk_matches[hunk_idx]:
+                    hunk_matches[hunk_idx].append(d)
+
+    def _badge_bar(matched: list[dict]) -> str:
+        if not matched:
+            return ""
+        parts = []
+        for d in matched:
+            dt = html.escape(d.get("diff_type", ""))
+            cause = html.escape(d.get("cause", "") or "")
+            tip = f' title="{cause}"' if cause else ""
+            parts.append(
+                f'<span{tip} style="background:#cfe2ff;border:1px solid #9ec5fe;'
+                f'padding:1px 6px;border-radius:3px;font-size:0.82em;'
+                f'white-space:nowrap;cursor:default">&#128203; {dt}</span>'
+            )
+        return (
+            '<div style="background:#e8f0fe;padding:3px 8px;'
+            'border-left:3px solid #4a90d9;font-family:sans-serif;'
+            'font-size:0.82em;display:flex;flex-wrap:wrap;gap:4px;align-items:center">'
+            + "".join(parts) + "</div>"
+        )
+
+    def _render_line(line: str) -> str:
         escaped = html.escape(line)
         if line.startswith("⚠"):
-            lines_html.append(
-                f'<span style="background:#fff3cd;color:#856404;font-weight:bold">'
-                f'{escaped}</span>'
-            )
+            return (f'<span style="background:#fff3cd;color:#856404;font-weight:bold">'
+                    f'{escaped}</span>')
         elif line.startswith("+") and not line.startswith("+++"):
-            lines_html.append(f'<span style="background:#dfd">{escaped}</span>')
+            return f'<span style="background:#dfd">{escaped}</span>'
         elif line.startswith("-") and not line.startswith("---"):
-            lines_html.append(f'<span style="background:#fdd">{escaped}</span>')
-        else:
-            lines_html.append(escaped)
+            return f'<span style="background:#fdd">{escaped}</span>'
+        return escaped
+
+    # ── unified ビュー ──
+    def _build_unified() -> str:
+        blocks: list[str] = []
+        cur_hunk_idx = -1
+        cur_hunk_lines: list[str] = []
+        pre_lines: list[str] = []
+        in_hunk = False
+        for line in entry.diff_lines:
+            if re.match(r"^@@", line):
+                if in_hunk and cur_hunk_lines:
+                    blocks.append(
+                        '<pre style="font-size:0.85em;overflow-x:auto;margin:0;width:100%;box-sizing:border-box">'
+                        + "".join(_render_line(l) for l in cur_hunk_lines)
+                        + "</pre>"
+                    )
+                    cur_hunk_lines = []
+                else:
+                    if pre_lines:
+                        blocks.append(
+                            '<pre style="font-size:0.85em;overflow-x:auto;margin:0;width:100%;box-sizing:border-box">'
+                            + "".join(_render_line(l) for l in pre_lines)
+                            + "</pre>"
+                        )
+                        pre_lines = []
+                cur_hunk_idx += 1
+                in_hunk = True
+                badge = _badge_bar(hunk_matches.get(cur_hunk_idx, []))
+                if badge:
+                    blocks.append(badge)
+                cur_hunk_lines.append(line)
+            else:
+                if in_hunk:
+                    cur_hunk_lines.append(line)
+                else:
+                    pre_lines.append(line)
+        if in_hunk and cur_hunk_lines:
+            blocks.append(
+                '<pre style="font-size:0.85em;overflow-x:auto;margin:0;width:100%;box-sizing:border-box">'
+                + "".join(_render_line(l) for l in cur_hunk_lines)
+                + "</pre>"
+            )
+        elif pre_lines:
+            blocks.append(
+                '<pre style="font-size:0.85em;overflow-x:auto;margin:0;width:100%;box-sizing:border-box">'
+                + "".join(_render_line(l) for l in pre_lines)
+                + "</pre>"
+            )
+        return (
+            '<div style="border:1px solid #e0e0e0;border-radius:3px;overflow-x:auto">'
+            + "".join(b for b in blocks if b)
+            + "</div>"
+        )
+
+    # ── split ビュー（2ペイン独立横スクロール・バッジは全幅div・縦ずれなし） ──
+    def _build_split() -> str:
+        LNUM = (
+            "font-family:monospace;text-align:right;padding:1px 4px;"
+            "color:#aaa;user-select:none;border-right:1px solid #e0e0e0;"
+            "width:3em;font-size:0.85em;white-space:nowrap;vertical-align:top"
+        )
+        CODE = "font-family:monospace;white-space:pre;padding:1px 6px;vertical-align:top"
+        SEP = "border-left:2px solid #aaa"
+        FHDR = "font-family:monospace;font-size:0.85em;padding:2px 6px;background:#f0f0f0;color:#555"
+        HHDR = "font-family:monospace;font-size:0.85em;padding:2px 6px;background:#e8e8e8;font-weight:bold;color:#555"
+        WARN = "font-family:monospace;font-size:0.85em;padding:2px 6px;background:#fff3cd;color:#856404;font-weight:bold"
+
+        def _char_diff(old: str, new: str) -> tuple[str, str]:
+            """文字レベルの差分を取り、差分箇所を濃い背景色でハイライトした HTML を返す"""
+            sm = difflib.SequenceMatcher(None, old, new, autojunk=False)
+            oh: list[str] = []
+            nh: list[str] = []
+            for tag, i1, i2, j1, j2 in sm.get_opcodes():
+                if tag == "equal":
+                    oh.append(html.escape(old[i1:i2]))
+                    nh.append(html.escape(new[j1:j2]))
+                elif tag == "replace":
+                    oh.append(f'<span style="background:#f77">{html.escape(old[i1:i2])}</span>')
+                    nh.append(f'<span style="background:#4d4">{html.escape(new[j1:j2])}</span>')
+                elif tag == "delete":
+                    oh.append(f'<span style="background:#f77">{html.escape(old[i1:i2])}</span>')
+                elif tag == "insert":
+                    nh.append(f'<span style="background:#4d4">{html.escape(new[j1:j2])}</span>')
+            return "".join(oh), "".join(nh)
+
+        # セグメントリスト: 各要素は dict
+        segments: list[dict] = []
+        cur_left: list[str] = []
+        cur_right: list[str] = []
+        old_lno = 0
+        new_lno = 0
+        cur_hunk_idx = -1
+        idx = 0
+        lines = entry.diff_lines
+        seg_idx = 0  # コードセグメントのID連番
+
+        def flush_code() -> None:
+            nonlocal seg_idx
+            if not cur_left and not cur_right:
+                return
+            n = max(len(cur_left), len(cur_right))
+            while len(cur_left) < n:
+                cur_left.append(
+                    f'<tr><td style="{LNUM}">&nbsp;</td>'
+                    f'<td style="{CODE};background:#f5f5f5">&nbsp;</td></tr>'
+                )
+            while len(cur_right) < n:
+                cur_right.append(
+                    f'<tr><td style="{LNUM}">&nbsp;</td>'
+                    f'<td style="{CODE};background:#f5f5f5">&nbsp;</td></tr>'
+                )
+            segments.append({
+                "type": "code", "id": seg_idx,
+                "left": list(cur_left), "right": list(cur_right),
+            })
+            cur_left.clear()
+            cur_right.clear()
+            seg_idx += 1
+
+        while idx < len(lines):
+            line = lines[idx].rstrip("\n")
+
+            if line.startswith("---") or line.startswith("+++"):
+                flush_code()
+                segments.append({"type": "fhdr", "line": line})
+                idx += 1
+                continue
+
+            m = re.match(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@", line)
+            if m:
+                flush_code()
+                old_lno = int(m.group(1))
+                new_lno = int(m.group(2))
+                cur_hunk_idx += 1
+                matched = hunk_matches.get(cur_hunk_idx, [])
+                if matched:
+                    segments.append({"type": "badge", "html": _badge_bar(matched)})
+                segments.append({"type": "hhdr", "line": line})
+                idx += 1
+                continue
+
+            if line.startswith("\u26a0"):
+                flush_code()
+                segments.append({"type": "warn", "line": line})
+                idx += 1
+                continue
+
+            del_lines: list[str] = []
+            add_lines: list[str] = []
+            while idx < len(lines):
+                ln = lines[idx].rstrip("\n")
+                if ln.startswith("-") and not ln.startswith("---"):
+                    del_lines.append(ln[1:])
+                    idx += 1
+                elif ln.startswith("+") and not ln.startswith("+++"):
+                    add_lines.append(ln[1:])
+                    idx += 1
+                else:
+                    break
+
+            if del_lines or add_lines:
+                n = max(len(del_lines), len(add_lines))
+                for j in range(n):
+                    has_del = j < len(del_lines)
+                    has_add = j < len(add_lines)
+                    lt = del_lines[j] if has_del else ""
+                    rt = add_lines[j] if has_add else ""
+                    ll = str(old_lno + j) if has_del else ""
+                    rl = str(new_lno + j) if has_add else ""
+                    lb = "#fdd" if has_del else "#f5f5f5"
+                    rb = "#dfd" if has_add else "#f5f5f5"
+                    # 対応行がある場合のみ文字レベル diff でbold
+                    if has_del and has_add:
+                        lt_html, rt_html = _char_diff(lt, rt)
+                    else:
+                        lt_html = html.escape(lt) or "&nbsp;"
+                        rt_html = html.escape(rt) or "&nbsp;"
+                    cur_left.append(
+                        f'<tr><td style="{LNUM}">{html.escape(ll) or "&nbsp;"}</td>'
+                        f'<td style="{CODE};background:{lb}">{lt_html or "&nbsp;"}</td></tr>'
+                    )
+                    cur_right.append(
+                        f'<tr><td style="{LNUM}">{html.escape(rl) or "&nbsp;"}</td>'
+                        f'<td style="{CODE};background:{rb}">{rt_html or "&nbsp;"}</td></tr>'
+                    )
+                old_lno += len(del_lines)
+                new_lno += len(add_lines)
+                continue
+
+            text = line[1:] if line.startswith(" ") else line
+            row = (
+                f'<tr><td style="{LNUM}">{{}}</td>'
+                f'<td style="{CODE};background:#fff">{html.escape(text)}</td></tr>'
+            )
+            cur_left.append(row.format(html.escape(str(old_lno))))
+            cur_right.append(row.format(html.escape(str(new_lno))))
+            old_lno += 1
+            new_lno += 1
+            idx += 1
+
+        flush_code()
+
+        # ── セグメントをHTMLに変換 ──
+        parts: list[str] = []
+        # 固定ヘッダ行（スクロールしても常に表示）
+        parts.append(
+            f'<div style="display:flex;position:sticky;top:0;z-index:2;background:#f0f0f0;border-bottom:1px solid #ccc">'
+            f'<div style="flex:1;text-align:center;padding:3px;font-weight:bold;font-size:0.85em">旧</div>'
+            f'<div style="flex:1;text-align:center;padding:3px;font-weight:bold;font-size:0.85em;{SEP}">新</div>'
+            f'</div>'
+        )
+        for seg in segments:
+            t = seg["type"]
+            if t == "fhdr":
+                pass  # --- 旧/xxx / +++ 新/xxx は split では不要
+            elif t == "hhdr":
+                parts.append(f'<div style="{HHDR}">{html.escape(seg["line"])}</div>')
+            elif t == "warn":
+                parts.append(f'<div style="{WARN}">{html.escape(seg["line"])}</div>')
+            elif t == "badge":
+                parts.append(seg["html"])
+            elif t == "code":
+                sid = seg["id"]
+                lid = f"lp-{key}-{sid}"
+                rid = f"rp-{key}-{sid}"
+                tbl_style = 'style="border-collapse:collapse"'
+                col = '<colgroup><col style="width:3em"><col></colgroup>'
+                ltbl = f'<table {tbl_style}>{col}<tbody>{"".join(seg["left"])}</tbody></table>'
+                rtbl = f'<table {tbl_style}>{col}<tbody>{"".join(seg["right"])}</tbody></table>'
+                parts.append(
+                    f'<div style="display:flex">'
+                    f'<div id="{lid}" style="flex:1;min-width:0;overflow-x:auto"'
+                    f' onscroll="syncScrollX(this,\'{rid}\')">{ltbl}</div>'
+                    f'<div id="{rid}" style="flex:1;min-width:0;overflow-x:auto;{SEP}"'
+                    f' onscroll="syncScrollX(this,\'{lid}\')">{rtbl}</div>'
+                    f'</div>'
+                )
+
+        return (
+            '<div style="border:1px solid #e0e0e0;border-radius:3px;font-size:0.85em;'
+            'max-height:480px;overflow-y:auto">'
+            + "".join(parts)
+            + "</div>"
+        )
+    unified_html = _build_unified()
+    split_html = _build_split()
+
     pre_html = (
-        '<pre style="font-size:0.85em;overflow-x:auto">'
-        + "".join(lines_html)
-        + "</pre>"
+        "<div>"
+        '<div style="text-align:right;margin-bottom:2px">'
+        '<button onclick="toggleSplit(this)" data-mode="unified" '
+        'style="font-size:0.78em;padding:2px 8px;cursor:pointer;'
+        'border:1px solid #aaa;background:#f8f8f8;border-radius:3px">'
+        "⇔ 左右表示</button>"
+        "</div>"
+        f'<div data-view="unified">{unified_html}</div>'
+        f'<div data-view="split" style="display:none">{split_html}</div>'
+        "</div>"
     )
     js_content = (
         f"(window.DIFF_CACHE=window.DIFF_CACHE||{{}})"
@@ -294,10 +643,10 @@ def _write_diff_js(entry: DiffEntry, key: str, diffs_dir: Path) -> str:
         f'<details ontoggle="loadDiff(this)" '
         f'data-diff-key="{html.escape(key)}" '
         f'data-diff-src="{html.escape(js_src_rel)}">'
-        f'<summary>差分を表示</summary>'
+        f"<summary>差分を表示</summary>"
         f'<div class="diff-ph" style="color:#888;font-size:0.85em">'
-        f'（展開すると差分を読み込みます）</div>'
-        f'</details>'
+        f"（展開すると差分を読み込みます）</div>"
+        f"</details>"
     )
 
 
@@ -338,9 +687,11 @@ def _image_compare_cell(entry: DiffEntry, old_root: Path, new_root: Path,
 
 
 def write_html(entries: list[DiffEntry], old_root: Path, new_root: Path,
-               out_path: Path) -> int:
+               out_path: Path,
+               annotations: dict[str, dict] | None = None) -> int:
     """エントリをフォルダ単位の折り畳み（<details>）付き HTML に出力する。
     diff 内容は {html名}_diffs/ に外部 JS ファイルとして分離する。
+    annotations が指定された場合、Different ファイルにアノテーションバッジを表示する。
     戻り値は書き込み件数。"""
     from collections import Counter
     diffs_dir = out_path.parent / (out_path.stem + "_diffs")
@@ -388,14 +739,47 @@ def write_html(entries: list[DiffEntry], old_root: Path, new_root: Path,
         file_rows = ""
         for e in folder_entries:
             color = ROW_COLORS.get(e.result, "#ffffff")
+            # アノテーションエントリを先に取得（diff_td と annot_html の両方で利用）
+            annot_key = e.name if not e.folder else f"{e.folder}/{e.name}"
+            annot = (annotations or {}).get(annot_key, {})
+
             if e.ext.lower() in IMAGE_EXTENSIONS:
                 diff_td = _image_compare_cell(e, old_root, new_root, out_path)
             elif e.diff_lines:
                 key = f"d{diff_idx}"
                 diff_idx += 1
-                diff_td = _write_diff_js(e, key, diffs_dir)
+                diff_td = _write_diff_js(e, key, diffs_dir, annot.get("details", []))
             else:
                 diff_td = ""
+            # アノテーションバッジ生成
+            annot_html = ""
+            if annotations and annot:
+                if annot:
+                    parts: list[str] = []
+                    for d in annot.get("details", []):
+                        dt = html.escape(d.get("diff_type", ""))
+                        cause = html.escape(d.get("cause", "") or "")
+                        if dt:
+                            tip = f' title="{cause}"' if cause else ""
+                            parts.append(
+                                f'<span{tip} style="background:#cfe2ff;border:1px solid #9ec5fe;'
+                                f'padding:1px 6px;border-radius:3px;white-space:nowrap;cursor:default">'
+                                f'&#128203; {dt}</span>'
+                            )
+                    reason = html.escape(annot.get("reason", "").strip())
+                    if reason:
+                        parts.append(
+                            f'<span style="background:#fff3cd;border:1px solid #ffc107;'
+                            f'padding:1px 6px;border-radius:3px;white-space:nowrap">'
+                            f'&#128221; {reason}</span>'
+                        )
+                    if parts:
+                        annot_html = (
+                            f'<div style="margin-bottom:4px;font-size:0.85em;'
+                            f'display:flex;flex-wrap:wrap;gap:4px">'
+                            + "".join(parts)
+                            + '</div>'
+                        )
             file_rows += (
                 f'<tr style="background:{color}">'
                 f'<td>{html.escape(e.name)}</td>'
@@ -403,9 +787,16 @@ def write_html(entries: list[DiffEntry], old_root: Path, new_root: Path,
                 f'<td>{html.escape(e.old_mtime)}</td>'
                 f'<td>{html.escape(e.new_mtime)}</td>'
                 f'<td>{html.escape(e.ext)}</td>'
-                f'<td>{diff_td}</td>'
                 f'</tr>\n'
             )
+            if diff_td or annot_html:
+                file_rows += (
+                    f'<tr style="background:{color}">'
+                    f'<td colspan="5" style="padding:4px 8px">'
+                    f'{annot_html}{diff_td}'
+                    f'</td>'
+                    f'</tr>\n'
+                )
 
         folder_sections += (
             f'<details>'
@@ -416,10 +807,15 @@ def write_html(entries: list[DiffEntry], old_root: Path, new_root: Path,
             f'[{html.escape(", ".join(label_parts))}]'
             f'&nbsp;{len(folder_entries)} 件</span>'
             f'</summary>\n'
-            f'<table>\n'
+            f'<table style="table-layout:fixed;width:100%">\n'
+            f'<colgroup>'
+            f'<col style="width:22%"><col style="width:10%">'
+            f'<col style="width:15%"><col style="width:15%">'
+            f'<col style="width:8%">'
+            f'</colgroup>\n'
             f'<thead><tr>'
             f'<th>ファイル名</th><th>比較結果</th>'
-            f'<th>旧更新日時</th><th>新更新日時</th><th>拡張子</th><th>差分</th>'
+            f'<th>旧更新日時</th><th>新更新日時</th><th>拡張子</th>'
             f'</tr></thead>\n'
             f'<tbody>\n{file_rows}</tbody>\n'
             f'</table>\n'
@@ -433,7 +829,7 @@ def write_html(entries: list[DiffEntry], old_root: Path, new_root: Path,
 <meta charset="utf-8">
 <title>output diff: {html.escape(str(old_root))} → {html.escape(str(new_root))}</title>
 <style>
-  body {{ font-family: sans-serif; font-size: 0.9em; }}
+  body {{ font-family: sans-serif; font-size: 0.9em; overflow-x: hidden; max-width: 100vw; }}
   table {{ border-collapse: collapse; width: 100%; margin-bottom: 8px; }}
   th, td {{ border: 1px solid #ccc; padding: 4px 8px; vertical-align: top; }}
   th {{ background: #f0f0f0; }}
@@ -454,6 +850,29 @@ function loadDiff(el) {{
     if (ph && c) {{ ph.innerHTML = c; }}
   }};
   document.head.appendChild(s);
+}}
+function toggleSplit(btn) {{
+  var wrap = btn.parentElement.parentElement;
+  var uview = wrap.querySelector('[data-view="unified"]');
+  var sview = wrap.querySelector('[data-view="split"]');
+  if (btn.dataset.mode === 'unified') {{
+    uview.style.display = 'none';
+    sview.style.display = '';
+    btn.dataset.mode = 'split';
+    btn.textContent = '\u2261 \u5dee\u5206\u8868\u793a';
+  }} else {{
+    uview.style.display = '';
+    sview.style.display = 'none';
+    btn.dataset.mode = 'unified';
+    btn.textContent = '\u21d4 \u5de6\u53f3\u8868\u793a';
+  }}
+}}
+function syncScrollX(src, otherId) {{
+  var tgt = document.getElementById(otherId);
+  if (!tgt || tgt._sx) return;
+  src._sx = true;
+  tgt.scrollLeft = src.scrollLeft;
+  src._sx = false;
 }}
 // <details> を開閉しても summary の画面位置を固定する
 document.addEventListener('click', function(e) {{
@@ -507,6 +926,11 @@ def main() -> None:
     parser.add_argument("--html", action="store_true", help="HTML 形式で出力（デフォルト）")
     parser.add_argument("--csv", action="store_true", help="CSV 形式で出力（--html と排他）")
     parser.add_argument("--out", type=Path, help="出力ファイルパス")
+    parser.add_argument(
+        "--annotations", type=Path, default=None,
+        help="アノテーション JSON ファイルパス（--html 時のみ有効）。"
+             "省略時は <out_stem>_annotations.json を自動参照する。",
+    )
     args = parser.parse_args()
 
     # --html / --csv 排他チェック
@@ -534,7 +958,13 @@ def main() -> None:
     if use_csv:
         written = write_csv(entries, out_path)
     else:
-        written = write_html(entries, args.old, args.new_dir, out_path)
+        # アノテーション JSON スケルトンを自動生成（既存エントリは保持）
+        annotations_path = out_path.parent / (out_path.stem + "_annotations.json")
+        write_annotations_skeleton(entries, annotations_path)
+        # --annotations 指定 > 自動パス の順で読み込む
+        ann_src = args.annotations if args.annotations else annotations_path
+        annotations = load_annotations(ann_src) if ann_src.exists() else {}
+        written = write_html(entries, args.old, args.new_dir, out_path, annotations)
 
     print(f"  比較完了: {written} 件 → {out_path}")
 
