@@ -455,6 +455,18 @@ function loadDiff(el) {{
   }};
   document.head.appendChild(s);
 }}
+// <details> を開閉しても summary の画面位置を固定する
+document.addEventListener('click', function(e) {{
+  var summary = e.target.closest('summary');
+  if (!summary) return;
+  var details = summary.parentElement;
+  if (!details || details.tagName !== 'DETAILS') return;
+  var top = summary.getBoundingClientRect().top;
+  requestAnimationFrame(function() {{
+    var diff = summary.getBoundingClientRect().top - top;
+    window.scrollBy(0, diff);
+  }});
+}});
 </script>
 </head>
 <body>
