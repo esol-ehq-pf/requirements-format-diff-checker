@@ -1,6 +1,6 @@
 {
   "tool": "output_diff.py",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "purpose": "2つの OUTPUT フォルダを再帰的に比較し、WinMerge のフォルダ比較結果に相当する一覧を HTML または CSV で出力する。",
 
   "context": {
@@ -166,6 +166,11 @@
       "element": "<details>（summary: '画像を表示'）内に <table> で旧・新を左右配置",
       "img_src": "os.path.relpath() で HTML ファイルからの相対パスを生成（ブラウザで直接参照可能）",
       "missing_file": "片側のみ存在する場合（Left only / Right only）は存在しない側に Empty プレースホルダ（灰色背景）を表示する"
+    },
+    "scroll_behavior": {
+      "description": "<details> を開閉しても summary の画面上の位置が変わらないようにスクロール補正する",
+      "mechanism": "click イベントで summary の getBoundingClientRect().top を記録し、requestAnimationFrame で展開後に scrollBy(0, diff) を実行",
+      "scope": "全 <details>（フォルダ折り畳み・画像比較・ diff lazy-load）に適用"
     },
     "encoding": "utf-8"
   },
