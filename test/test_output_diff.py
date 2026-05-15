@@ -243,7 +243,8 @@ def test_tc5_html_output(tmp_path):
 # ─────────────────────────────────────────
 
 def test_tc9_unified_diff_in_html(tmp_path):
-    """TC-9: Different テキストファイルの HTML に unified diff（<details>・+/-行）が含まれる。"""
+    """TC-9: Different テキストファイルの diff が外部 JS ファイルに書き出される。
+    HTML にはプレースホルダ <details> が含まれ、diff 内容は _diffs/*.js に格納される。"""
     old_dir = tmp_path / "old"
     new_dir = tmp_path / "new"
     make_tree(old_dir, {"a.csv": "line1\nold_line\nline3\n"})
@@ -254,9 +255,19 @@ def test_tc9_unified_diff_in_html(tmp_path):
     assert result.returncode == 0
 
     content = out.read_text(encoding="utf-8")
-    assert "<details>" in content
-    assert "+new_line" in content or "new_line" in content
-    assert "-old_line" in content or "old_line" in content
+    # HTML にはプレースホルダ <details> と lazy-load 属性が存在する
+    assert "<details" in content
+    assert "loadDiff" in content
+    assert "data-diff-src" in content
+
+    # diff 内容は外部 JS ファイルに書き出される
+    diffs_dir = out.parent / (out.stem + "_diffs")
+    assert diffs_dir.exists(), "diffs ディレクトリが存在しない"
+    js_files = list(diffs_dir.glob("*.js"))
+    assert len(js_files) == 1, f"JS ファイルが 1 件あること: {js_files}"
+    js_content = js_files[0].read_text(encoding="utf-8")
+    assert "new_line" in js_content
+    assert "old_line" in js_content
 
 
 # ─────────────────────────────────────────

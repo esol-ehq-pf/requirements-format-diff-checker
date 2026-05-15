@@ -12,6 +12,7 @@ import csv
 import datetime
 import difflib
 import html
+import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -41,6 +42,7 @@ CSV_COLUMNS: list[str] = [
 ]
 
 DIFF_CONTEXT_LINES: int = 3
+DIFF_MAX_LINES: int = 1000  # これを超えた場合は先頭 N 行のみ表示し Warning を付与する
 
 SORT_ORDER: dict[str, int] = {
     "Different":  0,
@@ -146,13 +148,29 @@ def _compare_file(rel: str, old_root: Path, new_root: Path) -> DiffEntry:
         return DiffEntry(name=name, folder=folder, result="Identical",
                          old_mtime=old_mtime, new_mtime=new_mtime, ext=ext)
 
+    old_lines = old_text.splitlines(keepends=True)
+    new_lines = new_text.splitlines(keepends=True)
+    old_total = len(old_lines)
+    new_total = len(new_lines)
+
+    # 巨大ファイルは先頭 DIFF_MAX_LINES 行のみ diff にかけて高速化
+    truncated = old_total > DIFF_MAX_LINES or new_total > DIFF_MAX_LINES
+    if truncated:
+        old_lines = old_lines[:DIFF_MAX_LINES]
+        new_lines = new_lines[:DIFF_MAX_LINES]
+
     diff_lines = list(difflib.unified_diff(
-        old_text.splitlines(keepends=True),
-        new_text.splitlines(keepends=True),
+        old_lines,
+        new_lines,
         fromfile=f"旧/{rel}",
         tofile=f"新/{rel}",
         n=DIFF_CONTEXT_LINES,
     ))
+    if truncated:
+        diff_lines += [
+            f"\n⚠ WARNING: ファイルが大きすぎるため先頭 {DIFF_MAX_LINES:,} 行のみ比較しました。"
+            f"（旧: {old_total:,} 行 / 新: {new_total:,} 行）\n",
+        ]
     return DiffEntry(name=name, folder=folder, result="Different",
                      old_mtime=old_mtime, new_mtime=new_mtime, ext=ext,
                      diff_lines=diff_lines)
@@ -215,26 +233,43 @@ def write_csv(entries: list[DiffEntry], out_path: Path) -> int:
 # HTML 出力（IT-4/IT-5 で実装予定）
 # ──────────────────────────────────────────
 
-def _diff_cell(entry: DiffEntry) -> str:
-    """unified diff を <details> タグで展開する HTML フラグメントを返す。
-    diff_lines が空の場合は空文字を返す。"""
-    if not entry.diff_lines:
-        return ""
+def _write_diff_js(entry: DiffEntry, key: str, diffs_dir: Path) -> str:
+    """unified diff 内容を外部 JS ファイルに書き出し、プレースホルダ <details> HTML を返す。
+    呼び出し側が diffs_dir を事前に作成しておくこと。"""
     lines_html: list[str] = []
     for line in entry.diff_lines:
         escaped = html.escape(line)
-        if line.startswith("+") and not line.startswith("+++"):
+        if line.startswith("⚠"):
+            lines_html.append(
+                f'<span style="background:#fff3cd;color:#856404;font-weight:bold">'
+                f'{escaped}</span>'
+            )
+        elif line.startswith("+") and not line.startswith("+++"):
             lines_html.append(f'<span style="background:#dfd">{escaped}</span>')
         elif line.startswith("-") and not line.startswith("---"):
             lines_html.append(f'<span style="background:#fdd">{escaped}</span>')
         else:
             lines_html.append(escaped)
-    pre_content = "".join(lines_html)
+    pre_html = (
+        '<pre style="font-size:0.85em;overflow-x:auto">'
+        + "".join(lines_html)
+        + "</pre>"
+    )
+    js_content = (
+        f"(window.DIFF_CACHE=window.DIFF_CACHE||{{}})"
+        f"[{json.dumps(key)}]={json.dumps(pre_html)};\n"
+    )
+    (diffs_dir / f"{key}.js").write_text(js_content, encoding="utf-8")
+
+    js_src_rel = f"{diffs_dir.name}/{key}.js"
     return (
-        '<details>'
-        '<summary>差分を表示</summary>'
-        f'<pre style="font-size:0.85em;overflow-x:auto">{pre_content}</pre>'
-        '</details>'
+        f'<details ontoggle="loadDiff(this)" '
+        f'data-diff-key="{html.escape(key)}" '
+        f'data-diff-src="{html.escape(js_src_rel)}">'
+        f'<summary>差分を表示</summary>'
+        f'<div class="diff-ph" style="color:#888;font-size:0.85em">'
+        f'（展開すると差分を読み込みます）</div>'
+        f'</details>'
     )
 
 
@@ -277,8 +312,12 @@ def _image_compare_cell(entry: DiffEntry, old_root: Path, new_root: Path,
 def write_html(entries: list[DiffEntry], old_root: Path, new_root: Path,
                out_path: Path) -> int:
     """エントリをフォルダ単位の折り畳み（<details>）付き HTML に出力する。
+    diff 内容は {html名}_diffs/ に外部 JS ファイルとして分離する。
     戻り値は書き込み件数。"""
     from collections import Counter
+    diffs_dir = out_path.parent / (out_path.stem + "_diffs")
+    diffs_dir.mkdir(exist_ok=True)
+    diff_idx = 0
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     counts = Counter(e.result for e in entries)
 
@@ -323,8 +362,12 @@ def write_html(entries: list[DiffEntry], old_root: Path, new_root: Path,
             color = ROW_COLORS.get(e.result, "#ffffff")
             if e.ext.lower() in IMAGE_EXTENSIONS:
                 diff_td = _image_compare_cell(e, old_root, new_root, out_path)
+            elif e.diff_lines:
+                key = f"d{diff_idx}"
+                diff_idx += 1
+                diff_td = _write_diff_js(e, key, diffs_dir)
             else:
-                diff_td = _diff_cell(e)
+                diff_td = ""
             file_rows += (
                 f'<tr style="background:{color}">'
                 f'<td>{html.escape(e.name)}</td>'
@@ -371,6 +414,20 @@ def write_html(entries: list[DiffEntry], old_root: Path, new_root: Path,
   details > summary::before {{ content: "▶ "; font-size: 0.8em; }}
   details[open] > summary::before {{ content: "▼ "; font-size: 0.8em; }}
 </style>
+<script>
+function loadDiff(el) {{
+  if (!el.open || el.dataset.loaded) return;
+  el.dataset.loaded = '1';
+  var s = document.createElement('script');
+  s.src = el.dataset.diffSrc;
+  s.onload = function() {{
+    var ph = el.querySelector('.diff-ph');
+    var c = (window.DIFF_CACHE || {{}})[el.dataset.diffKey];
+    if (ph && c) {{ ph.innerHTML = c; }}
+  }};
+  document.head.appendChild(s);
+}}
+</script>
 </head>
 <body>
 <h1>output diff</h1>
