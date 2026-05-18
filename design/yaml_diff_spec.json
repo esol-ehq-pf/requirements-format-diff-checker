@@ -1,0 +1,185 @@
+{
+  "tool": "yaml_diff.py",
+  "version": "0.1.2",
+  "purpose": "要件 YAML ファイル（.slot.yaml / .budget.yaml）の before/after フォルダを比較し、diff_type 単位の変化点一覧レポート（yaml_diff_report.json）を生成する。オプションで cause_classifier_spec.json のマッチャー一覧（M-01〜M-21）とのカバレッジチェックを行い、未カバーの diff_type を stdout に出力する。Phase-A 実行前の事前確認として使い、未カバー diff_type が発覚した場合はPhase-C の C-3（新マッチャー追加）を先行実施できる。",
+  "context": {
+    "background": "スケジューリング要件 YAML は TSS4 の変種（ver1/ver2/ver2.1 × バリアント）ごとに存在し、before（旧バージョン）と after（新バージョン）で差分が生じる。yaml_diff.py はこの差分を構造化レポートとして出力することで、Phase-A（output_diff.py による CSV 比較）の前にどの種類の変化が起きているかを把握できる。",
+    "workflow_spec": "design/workflow_spec_v120_draft.json",
+    "phase_in_workflow": "Phase-0（YAML 差分自動検出）",
+    "called_from": "CLI（手動実行）",
+    "yaml_file_types": {
+      ".slot.yaml": "list 形式。各エントリは {RequirementId, SequenceStartTimeSlotList or SenderStartTimeSlotList, ...} を持つ。エントリ数: m01-after で 467 件、b01-after で 395 件。",
+      ".budget.yaml": "dict 形式。トップキーは BudgetGroupDefinition（list）。各グループは {BudgetGroupID, TaskList} を持つ。"
+    },
+    "skip_condition": "before YAML 未入手の場合は Phase-0 全体をスキップして Phase-A へ進む。カバレッジチェックなしのまま Phase-A/B を実行し、Phase-C で Unknown が多ければ C-3 を実施する。"
+  },
+  "inputs": {
+    "before_dir": {
+      "type": "directory",
+      "description": "before（旧バージョン）の YAML ファイル群。--before で指定。",
+      "example": "input/requirement_file/m01-before/",
+      "files": [
+        "{variant}.slot.yaml（スケジューリング要件）",
+        "{variant}_budget.yaml（バジェット定義）"
+      ]
+    },
+    "after_dir": {
+      "type": "directory",
+      "description": "after（新バージョン）の YAML ファイル群。--after で指定。",
+      "example": "input/requirement_file/m01-after/",
+      "files": [
+        "{variant}.slot.yaml",
+        "{variant}_budget.yaml"
+      ]
+    },
+    "cause_classifier_spec": {
+      "type": "JSON file（省略可能）",
+      "description": "--check-coverage 指定時に読み込む。マッチャー M-01〜M-21 の diff_type 対応表として使用。",
+      "default": "design/cause_classifier_spec.json"
+    }
+  },
+  "outputs": {
+    "yaml_diff_report_json": {
+      "path": "output/{project}_{variant}_yaml_diff_report.json",
+      "description": "YAML before/after の差分をファイル・diff_type 単位でまとめたレポート。",
+      "zero_case": "差分なしの場合は entries=[] かつ diff_types=[] で出力する（ファイルは生成する）。"
+    },
+    "stdout_coverage": {
+      "description": "--check-coverage 指定時のみ stdout に出力。未カバー diff_type の一覧。",
+      "format": "1行1件の diff_type 文字列。全カバー済みの場合は空出力。"
+    }
+  },
+  "cli": {
+    "command": "python3 scripts/yaml_diff.py --before <DIR> --after <DIR> --out <FILE> [--check-coverage <SPEC_JSON>]",
+    "arguments": {
+      "--before": {
+        "type": "path（必須）",
+        "description": "before YAML フォルダ（input/requirement_file/{variant}-before/）"
+      },
+      "--after": {
+        "type": "path（必須）",
+        "description": "after YAML フォルダ（input/requirement_file/{variant}-after/）"
+      },
+      "--out": {
+        "type": "path（必須）",
+        "description": "yaml_diff_report.json の出力先。親ディレクトリが存在しない場合は自動作成。"
+      },
+      "--check-coverage": {
+        "type": "path（省略可）",
+        "description": "cause_classifier_spec.json のパス。指定すると未カバー diff_type を stdout に出力して終了コード 1 を返す。全カバー済みなら終了コード 0。"
+      }
+    },
+    "exit_codes": {
+      "0": "正常完了（差分なし・差分あり問わず。--check-coverage で全カバー済みの場合も 0）",
+      "1": "--check-coverage で未カバー diff_type が存在した場合",
+      "2": "引数エラー（--before/--after/--out 未指定等）",
+      "3": "入力ファイル読み込みエラー"
+    }
+  },
+  "processing_steps": [
+    {
+      "step": 1,
+      "name": "入力 YAML ファイルのペアリング",
+      "description": "before フォルダと after フォルダから同種ファイル（.slot.yaml / .budget.yaml）をファイル種別でペアリングする。before にのみ存在するファイルは diff_type='ファイル消失（YAML）'、after にのみ存在するファイルは diff_type='ファイル追加（YAML）' としてエントリを生成する。ペアリングはファイル種別（'.slot.yaml' / '_budget.yaml' サフィックス）で行う。"
+    },
+    {
+      "step": 2,
+      "name": "YAML 差分の抽出",
+      "description": "ペアごとに before/after を yaml.safe_load で読み込み、再帰的に差分を列挙する。slot.yaml（list 形式）: RequirementId をキーとして before/after を突き合わせる。budget.yaml（dict 形式）: BudgetGroupID をキーとして突き合わせる。各差分に key_path（例: 'AhbAhs-01.SequenceStartTimeSlotList'）・before 値・after 値を記録する。"
+    },
+    {
+      "step": 3,
+      "name": "diff_type の分類",
+      "description": "各差分エントリに diff_type を付与する。",
+      "diff_type_rules": {
+        "エントリ追加": "after にのみ存在する RequirementId / BudgetGroupID",
+        "エントリ削除": "before にのみ存在する RequirementId / BudgetGroupID",
+        "タイムスロット変化": "SequenceStartTimeSlotList または SenderStartTimeSlotList の値が変化",
+        "BudgetGroup変化": "BudgetGroupDefinition 内のタスクリスト変化",
+        "キー追加（YAML）": "同一エントリ内で after にのみ存在するキー",
+        "キー削除（YAML）": "同一エントリ内で before にのみ存在するキー",
+        "値変化（YAML）": "その他の値の変化（上記に分類されないもの）",
+        "ファイル追加（YAML）": "after フォルダにのみ存在する YAML ファイル。key_path は空文字。before/after はファイル名。",
+        "ファイル消失（YAML）": "before フォルダにのみ存在する YAML ファイル。key_path は空文字。before/after はファイル名。"
+      }
+    },
+    {
+      "step": 4,
+      "name": "レポート生成",
+      "description": "全差分エントリを yaml_diff_report.json に書き出す。diff_types フィールドに出現した diff_type の重複なし一覧を記載する。エントリはファイル名・diff_type・key_path・before・after の5フィールドで構成する。"
+    },
+    {
+      "step": 5,
+      "name": "カバレッジチェック（省略可）",
+      "description": "--check-coverage 指定時のみ実行。cause_classifier_spec.json のマッチャー一覧（M-01〜M-21）から対応する diff_type を収集し、yaml_diff_report の diff_types との差集合を計算する。未カバー diff_type があれば stdout に出力し終了コード 1 を返す。"
+    }
+  ],
+  "output_schema": {
+    "file": "output/{project}_{variant}_yaml_diff_report.json",
+    "top_level_fields": {
+      "generated_at": "ISO 8601 形式のタイムスタンプ（UTC）",
+      "before_dir": "before フォルダのパス（引数値そのまま）",
+      "after_dir": "after フォルダのパス（引数値そのまま）",
+      "diff_types": "出現した diff_type の重複なし list（str）",
+      "uncovered_diff_types": "--check-coverage 指定時のみ付与。マッチャー未カバーの diff_type の list。--check-coverage 未指定時はキー自体を出力しない。",
+      "entries": "差分エントリの list。詳細は entries_schema を参照。"
+    },
+    "entries_schema": {
+      "file": "比較対象のファイル名（フォルダ相対パスではなくファイル名のみ）",
+      "diff_type": "差分の種類（processing_steps.step3 の diff_type_rules に従う）",
+      "key_path": "差分が発生した YAML キーパス（例: 'AhbAhs-01.SequenceStartTimeSlotList'）",
+      "before": "before 側の値（str 化して格納。list は JSON シリアライズ）",
+      "after": "after 側の値（str 化して格納。list は JSON シリアライズ）。エントリ削除の場合は空文字。エントリ追加の場合は RequirementId または BudgetGroupID（D-7 設計決定: plan の §2-2 参照）。"
+    }
+  },
+  "coverage_check": {
+    "input": "cause_classifier_spec.json の以下の箇所から diff_type 文字列を収集する:\n  1. processing_steps[].description 内の「diff_type == '...'」パターン（参考記述）\n  → 実際には cause_classifier.py のソースコードを解析するか、\n     cause_classifier_spec.json の known_issues_and_notes / plugin_architecture を参照する。\n実装推奨方式: cause_classifier.py をインポートして MATCHER_REGISTRY の match_fn を\n    inspect し、diff_type 比較の値を収集する（または別途 diff_type_list.json を設ける）。\n簡易方式: cause_classifier.py に KNOWN_DIFF_TYPES 定数を追加し、yaml_diff.py はそれを参照する。",
+    "matching_note": "yaml_diff.py の diff_type（YAML レベル変化）と cause_classifier の diff_type（CSV 出力差分）は名前空間が異なる場合がある。カバレッジチェックは名前が一致するものを対応とみなす。不一致の場合は未カバー扱いとなり、C-3 でマッチャー追加または diff_type 名の統一を検討する。",
+    "output_on_failure": "1行1件の未カバー diff_type を stdout に出力。終了コード 1。"
+  },
+  "workflow_position": {
+    "phase": "Phase-0",
+    "trigger": "before/after YAML が揃ったとき（Phase-A より先に実行可能）",
+    "feeds_into": [
+      "Phase-A（カバレッジ確認後に実行）",
+      "Phase-C C-3（未カバー diff_type 発見時に先行実施）"
+    ],
+    "predecessor": "なし（before YAML が入手できれば即時実行可能）",
+    "skip_when": "before YAML が未入手の場合は Phase-0 全体をスキップして Phase-A へ進む"
+  },
+  "known_issues_and_notes": [
+    {
+      "id": "N-01",
+      "note": "yaml_diff.py は未実装（2026-05-17 現在）。本 spec が実装の基礎仕様となる。"
+    },
+    {
+      "id": "N-02",
+      "note": "b01 は after のみ入手済み（before 入手待ち）。before 入手後に実行可能になる（2026-05-18 予定）。"
+    },
+    {
+      "id": "N-03",
+      "note": "yaml_diff.py の diff_type と cause_classifier の diff_type は名前空間が異なる可能性がある（N-3参照）。Phase-C C-3 実施時に diff_type の命名を統一することを推奨する。"
+    },
+    {
+      "id": "N-04",
+      "note": "処理対象 YAML の拡張子は .yaml のみ（.yml は対象外）。実際の入力ファイルが .yml の場合は --after の glob パターンを拡張する必要がある。 実データ（input/requirement_file/）内に .yml ファイルが存在しないことを確認済み（2026-05-17）。"
+    },
+    {
+      "id": "N-05",
+      "note": "slot.yaml のエントリ識別子は RequirementId を使用。同一 RequirementId が複数存在する場合（重複）は、先頭エントリのみを before/after の対応とする。"
+    },
+    {
+      "id": "N-06",
+      "note": "ペアリングはファイル種別サフィックス（.slot.yaml / _budget.yaml）で行う。before/after でファイル名が異なるため（例: TSS4_1AR2_RC01_m01_schedreq_relax.slot.yaml vs TSS4_V1_m01.slot.yaml）、ファイル名完全一致では対応不可。1フォルダあたり各サフィックスは1ファイルずつ想定。"
+    }
+  ],
+  "_version_note": "0.1.1: セルフレビュー NG 修正（2026-05-17）。dependencies セクション追加（PyYAML）。coverage_check.input を詳細化（収集元のキーパスを明記）。 | v0.1.2: diff_type_rules に ファイル追加/消失（YAML）追加（Q-2）。N-04 実データ確認追記。N-06 ペアリング方式追記（Q-5/7）。",
+  "dependencies": {
+    "PyYAML": {
+      "version": ">=5.0",
+      "install": "pip install PyYAML",
+      "note": "YAML ファイルの読み込みに yaml.safe_load を使用する。標準ライブラリに YAML パーサーは含まれないため PyYAML が必要。環境確認: python3 -c 'import yaml; print(yaml.__version__)'",
+      "availability": "PyYAML 6.0.3 が作業環境にインストール済み（2026-05-17 確認）"
+    }
+  }
+}

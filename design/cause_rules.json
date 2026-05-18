@@ -1,0 +1,114 @@
+{
+  "_comment": "cause_classifier.py が参照するマッチャー対応表。ツール本体を変更せずにルールを追加できる。",
+  "_version": "1.0.0",
+  "_updated": "2026-05-16",
+  "_source": "m02 yaml diff（input/requirement_file/m02-before vs m02-after）から抽出。ツールコード(CreateSchedulingRequirement/SchedulingData.py)で全変化がExcel入力に起因することを確認済み。",
+  "SWC_NODE_MAP": {
+    "_comment": "M-12 用。SWC名(old) → Node名(new) の対応表。X→Y/X の Y を特定するために使用する。",
+    "AhbAhs": "Main",
+    "FcmRc": [
+      "DataLatchGsp4C1",
+      "DataLatchGsp4C2",
+      "DataLatchGsp4C3",
+      "DataLatchGsp4C4",
+      "PreDataLatchForInlyrC1",
+      "PreDataLatchForInlyrC2",
+      "PreDataLatchForInlyrC3",
+      "PreDataLatchForInlyrC4"
+    ],
+    "InlyrBsr": [
+      "InlyrBsr(C1C3)",
+      "InlyrBsr(C2C4)"
+    ],
+    "InlyrFsr": [
+      "InlyrFsr(C1C3)",
+      "InlyrFsr(C2C4)"
+    ],
+    "IoProxy": [
+      "InlyrBsrProxy",
+      "InlyrFrdProxy",
+      "InlyrFsrProxy",
+      "InlyrGlProxy",
+      "OutlyrProxy"
+    ],
+    "Lafe": [
+      "Lafe(C1C3)",
+      "Lafe(C2C4)"
+    ],
+    "LgtCtl": "LightingControl",
+    "OFsn": [
+      "FsrPreproc",
+      "OFsn",
+      "StrFsn"
+    ],
+    "Pcs": [
+      "Pcs(C1C3)",
+      "Pcs(C2C4)"
+    ],
+    "Preempt": [
+      "b2m_spi_1st_2nd_Any_send",
+      "b2m_spi_1st_IO_2nd_Any_send",
+      "b2m_spi_1st_IO_recv",
+      "b2m_spi_2nd_Any_recv",
+      "m2b_spi_2nd_Any_recv",
+      "m2b_spi_2nd_Any_send",
+      "viddraw",
+      "viewrdr_cirend",
+      "viewrdr_scrm",
+      "viewrdr_uirend"
+    ],
+    "SplAd": [
+      "CSpm",
+      "EventSpm",
+      "MapEnd",
+      "Rob",
+      "TrafficJamSupport",
+      "Ymv"
+    ]
+  },
+  "BUDGET_ALIAS_MAP": {
+    "_comment": "M-14 用。budget.yaml の旧 TaskList 名（括弧除去後）→ 新 Node 名。SplAd(X)→Y や PsFsn→ApFsn のような名称変更を捕捉する。",
+    "AhbAhs": "Main",
+    "LgtCtl": "LightingControl",
+    "TJSupport": "TrafficJamSupport",
+    "PsFsn": "ApFsn",
+    "EventSpm": "EventSpm",
+    "MapEnd": "MapEnd",
+    "CSpm": "CSpm",
+    "Ymv": "Ymv",
+    "Rob": "Rob"
+  },
+  "PROJECT_VARIANTS": {
+    "_comment": "既知のバリアント識別子。budget.yaml の括弧除去パターン M-08 で variant サフィックスとして使用。",
+    "ver1": [
+      "b01",
+      "m01",
+      "m02",
+      "m03"
+    ]
+  },
+  "KNOWN_DIFF_TYPES": {
+    "_comment": "m02 実データで確認された全 diff_type 一覧（参考情報）。",
+    "ver1_m02": [
+      "NodeNameの変化",
+      "Nodeの順序入れ替わり",
+      "RequirementIdの変化",
+      "RequirementOwnerの変化",
+      "Sequence/Sender/Receiver/FirstTask/SecondTaskの変化",
+      "TaskIDの追加",
+      "TaskListの変化",
+      "etcの変化",
+      "id/nameの変化",
+      "mid行の時刻値変化",
+      "pf_1ms_base行の消失",
+      "pf_1ms_mid行の消失",
+      "キーの追加",
+      "ファイル消失",
+      "入力ファイルの差分",
+      "列ヘッダの変化",
+      "画像差分"
+    ]
+  },
+  "routing_table": [],
+  "_routing_table_comment": "routing_table: cause_rules.json 経由で ROUTING_TABLE を拡張できる。各エントリは {\"pattern\": \"fnmatch形式\", \"matchers\": [\"M-XX\", ...]} の形式。cause_classifier.py の load_rules() が起動時に読み込み、既存パターンと重複しないものを ROUTING_TABLE に追加する。新規プラグインマッチャーの対応ファイルパターンを登録するために使用する。"
+}

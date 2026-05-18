@@ -1,0 +1,32 @@
+"""m_example.py — マッチャープラグインのサンプルテンプレート
+
+このファイルをコピーして新しいマッチャーを作成してください。
+実際に使う場合はファイル名を m_22_<用途>.py のように変更し、
+このテンプレートファイルは削除してください。
+"""
+
+# ─────────────── マッチャー関数定義 ───────────────────────────────────────
+
+def _match_M22_example(diff_type: str, old_val: str, **_) -> bool:
+    """照合条件の例: 特定の diff_type かつ old_val が特定の prefix で始まる。"""
+    return diff_type == "値の変化" and old_val.startswith("EXAMPLE_")
+
+
+# cause_tag は固定文字列 or callable(**ctx) -> str のどちらでも可
+CAUSE_TAG = "カスタム原因(pattern-99)"
+
+
+# ─────────────── エントリ登録 ─────────────────────────────────────────────
+
+# MATCHER_ENTRIES: (matcher_id, level, match_fn, cause_tag_or_fn)
+# ・level: "G-1"（優先）または "G-2"（G-1 未マッチ時のフォールバック）
+# ・matcher_id は M-01〜M-21 と重複させないこと（重複時は後勝ち）
+MATCHER_ENTRIES = [
+    ("M-22", "G-1", _match_M22_example, CAUSE_TAG),
+]
+
+# ROUTING_ENTRIES: (fnmatch形式のファイルパターン, [matcher_id, ...])
+# このマッチャーを適用するファイル名パターンを登録する
+ROUTING_ENTRIES = [
+    ("*example_output*.csv", ["M-22"]),
+]

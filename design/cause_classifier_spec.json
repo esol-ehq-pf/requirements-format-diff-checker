@@ -1,0 +1,772 @@
+{
+  "tool": "cause_classifier.py",
+  "version": "0.7.0",
+  "purpose": "output_diff.py が生成した差分（annotations.json）に対して、差分セル単位で cause タグを自動付与する。G-1（ルールベース自動判定）→ G-2（対応表候補提示）→ Unknown の順で仕訳し、仕訳結果を cause_summary.csv / cause_detail.csv に出力する。",
+  "context": {
+    "background": "ver1/ver2/ver2.1 の要件ファイルを ver3 フォーマットへ変換する活動の一環として、差分をカテゴリ別に整理する。差分が infsimyml/chksimyml/slot.yaml/budget.yaml のフォーマット変更に起因するのか、ツール挙動変更に起因するのかを機械的に判定し、手動確認が必要な差分（Unknown）を最小化する。",
+    "pattern_log": "design/format_change_pattern_log.md",
+    "upstream_tool": "output_diff.py（ファイル単位の差分検出・annotations.json 生成）",
+    "workflow_spec": "design/workflow_spec_v120_draft.json（Phase-B 全体の設計）",
+    "phase_in_workflow": "Phase-B B-1",
+    "called_from": "Phase-B 開始直後に USER がコマンドラインで実行する"
+  },
+  "classification_levels": {
+    "G-1": "ルールベースで 1:1 決定できる。変換式 or 正規表現で old → new が再現可能。",
+    "G-2": "対応表（SWC↔Node等）または逆変換式で候補を 1〜2 件に絞れるが、確定には文脈が必要。",
+    "G-3": "SWC 名が未知で対応表を作れない。AI 補助を要する。",
+    "Unknown": "どのパターンにも該当しない差分。手動確認対象。"
+  },
+  "inputs": {
+    "annotations_json": "output_diff.py が生成した annotations.json（Different ファイル一覧）。CSV を再読みせず、このファイルの details[].{diff_type, old_val, new_val} を処理単位とする。",
+    "rules_json": "cause_rules.json（パターン定義。本仕様とは別ファイルで管理）"
+  },
+  "outputs": {
+    "cause_summary_csv": {
+      "path": "output/{basename}_cause_summary.csv",
+      "description": "cause タグ別の件数集計",
+      "columns": [
+        "cause_tag",
+        "pattern_no",
+        "level",
+        "count",
+        "files_affected"
+      ]
+    },
+    "cause_detail_csv": {
+      "path": "output/{basename}_cause_detail.csv",
+      "description": "details エントリ単位の全レコード（Unknown 追跡用）",
+      "columns": [
+        "file",
+        "diff_type",
+        "old_val",
+        "new_val",
+        "cause_tag",
+        "level",
+        "note"
+      ]
+    },
+    "annotations_json_updated": {
+      "path": "annotations.json（上書き）",
+      "description": "annotations.json の details フィールドに cause タグを補完して書き戻す"
+    }
+  },
+  "processing_steps": [
+    {
+      "step": 1,
+      "name": "details エントリ収集",
+      "description": "annotations.json を読み込み、全エントリの details[] を処理単位として収集する。CSV ファイルの再読み込みは行わない。",
+      "logic": [
+        "annotations.json['entries'] を走査し、各ファイルの details[] を (file_name, diff_type, old_val, new_val, cause) のリストに展開する",
+        "cause が既に記入済みのエントリはスキップ（既存の手動記入を保護）",
+        "cause が空文字のエントリのみをマッチング対象とする"
+      ]
+    },
+    {
+      "step": 2,
+      "name": "ファイル名 + diff_type → 適用マッチャーセットのルーティング",
+      "description": "ファイル名でマッチャー候補を絞り、無関係なルールの実行を省略する。",
+      "path_matching_rule": "annotations.json のキー（例: 'temp/before_requirements.csv'）に対し、Path(key).name（basename）を取り出してから file_pattern に対して fnmatch でマッチする。サブディレクトリの有無に関わらず basename のみで判定する。",
+      "routing_table_note": "applicable_patterns はパターンログの番号（参照用）。実装では applicable_matchers の M-ID リストを使用する。",
+      "routing_table": [
+        {
+          "file_pattern": "*cpuload_requirements.csv",
+          "applicable_patterns": [
+            "1-①",
+            "1-③",
+            "8",
+            "9"
+          ],
+          "applicable_matchers": [
+            "M-01",
+            "M-04",
+            "M-11"
+          ]
+        },
+        {
+          "file_pattern": "before_requirements.csv",
+          "applicable_patterns": [
+            "2-①",
+            "2-②",
+            "2-③",
+            "10",
+            "11",
+            "12",
+            "13"
+          ],
+          "applicable_matchers": [
+            "M-01",
+            "M-02",
+            "M-03",
+            "M-05",
+            "M-12",
+            "M-13",
+            "M-20"
+          ]
+        },
+        {
+          "file_pattern": "after_requirements.csv",
+          "applicable_patterns": [
+            "2-①",
+            "2-②",
+            "2-③",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19"
+          ],
+          "applicable_matchers": [
+            "M-01",
+            "M-02",
+            "M-03",
+            "M-05",
+            "M-12",
+            "M-13",
+            "M-20"
+          ]
+        },
+        {
+          "file_pattern": "before_budget.csv",
+          "applicable_patterns": [
+            "4-②",
+            "20"
+          ],
+          "applicable_matchers": [
+            "M-08",
+            "M-09",
+            "M-14"
+          ]
+        },
+        {
+          "file_pattern": "input_data_ba.csv",
+          "applicable_patterns": [
+            "21",
+            "22"
+          ],
+          "applicable_matchers": [
+            "M-10",
+            "M-16"
+          ]
+        },
+        {
+          "file_pattern": "input_data_igr.csv",
+          "applicable_patterns": [
+            "23",
+            "24"
+          ],
+          "applicable_matchers": [
+            "M-10",
+            "M-16"
+          ]
+        },
+        {
+          "file_pattern": "input_info.txt",
+          "applicable_patterns": [
+            "3-①",
+            "25",
+            "26"
+          ],
+          "applicable_matchers": [
+            "M-06",
+            "M-07"
+          ]
+        },
+        {
+          "file_pattern": "processing_time_result.csv",
+          "applicable_patterns": [
+            "1-③",
+            "27",
+            "28"
+          ],
+          "applicable_matchers": [
+            "M-01",
+            "M-04",
+            "M-11"
+          ]
+        },
+        {
+          "file_pattern": "schedule_result.csv",
+          "applicable_patterns": [
+            "2-③",
+            "29",
+            "30",
+            "31",
+            "32"
+          ],
+          "applicable_matchers": [
+            "M-01",
+            "M-13",
+            "M-20",
+            "M-21"
+          ]
+        },
+        {
+          "file_pattern": "schedule_result_fail_list.csv",
+          "applicable_patterns": [
+            "32",
+            "33"
+          ],
+          "applicable_matchers": [
+            "M-13",
+            "M-20"
+          ]
+        },
+        {
+          "file_pattern": "before_csv_data_tsync_PlusBA.csv",
+          "applicable_patterns": [
+            "21相当",
+            "mid行の時刻値変化"
+          ],
+          "applicable_matchers": [
+            "M-15",
+            "M-17"
+          ]
+        },
+        {
+          "file_pattern": "after_csv_data_tsync_PlusBA.csv",
+          "applicable_patterns": [
+            "21相当",
+            "mid行の時刻値変化"
+          ],
+          "applicable_matchers": [
+            "M-15",
+            "M-17"
+          ]
+        },
+        {
+          "file_pattern": "*.png",
+          "applicable_patterns": [
+            "PNG消失",
+            "PNG画像差分"
+          ],
+          "applicable_matchers": [
+            "M-18",
+            "M-19"
+          ]
+        }
+      ]
+    },
+    {
+      "step": 3,
+      "name": "パターンマッチ（G-1 → G-2 優先適用）",
+      "description": "各差分セルに対し、G-1 マッチャーを優先順に試し、最初にマッチしたものを cause として確定する。G-1 未マッチの場合は G-2 を試みる。マッチャーが返す cause_tag がオブジェクト型（M-13）の場合は、このステップで file_name をキーに文字列へ解決してから Step 4 に渡す。",
+      "matcher_priority": "G-1 が G-2 より常に優先。同一レベル内は patterns リストの順序で試行。",
+      "applicable_cols_note": "M-01/M-02/M-03/M-12/M-13 は applicable_cols を持つが、annotations.json の details エントリに列名フィールドはない。実装では diff_type 文字列から列名を推定する。推定マッピング: 'NodeNameの変化'→NodeName, 'RequirementIdの変化'→RequirementId, 'RequirementOwnerの変化'→RequirementOwner, 'id/nameの変化'→name, 'Sequence/Sender/Receiver/FirstTask/SecondTaskの変化'→Sequence等, 'etcの変化'→etc, 'TaskListの変化'→TaskList, 'キーの追加'→(new_valから判定)。列名が不明の場合は all-match として applicable_cols チェックをスキップする。",
+      "matchers": [
+        {
+          "id": "M-01",
+          "level": "G-1",
+          "name": "normalize 変換",
+          "cause_tag": {
+            "if_old_has_bracket": "infsimyml(1-①)",
+            "else": "chksimyml(2-③)"
+          },
+          "condition": "re.sub(r'\\(.*\\)', '', old).lower() == new。出力する cause_tag は 'old に「(」を含む場合 → infsimyml(1-①)、含まない場合 → chksimyml(2-③)' で分岐する。",
+          "applicable_cols": [
+            "NodeName",
+            "RequirementId",
+            "RequirementID",
+            "RequirementOwner",
+            "id",
+            "name"
+          ],
+          "note": "infsimyml は NodeName 列のみ対象。RequirementOwner / id / name 列での normalize 一致は chksimyml(2-③) を付与する。infsimyml(1-②) は括弧なしの lowercase 変換であり条件が同一のため M-01 に統合してある。"
+        },
+        {
+          "id": "M-02",
+          "level": "G-1",
+          "name": "SWC/Node 自己参照（X→X/X または X(sfx)→normalize(X)/X(sfx)）",
+          "cause_tag": "chksimyml(2-①)",
+          "condition": "以下のいずれかに該当する場合。(a) new == f'{old}/{old}': 括弧なし自己参照。(b) re.match(r'^(\\w+)/\\1$', new): X/X パターン。(c) normalize(new.split('/')[0]) == normalize(old.split('/')[0]) AND new.split('/')[1] == old: X(sfx)→normalize(X)/X(sfx) パターン（実例: InlyrBsr(C1C3)→InlyrBsr/InlyrBsr(C1C3)）",
+          "applicable_cols": [
+            "Sender",
+            "Receiver",
+            "FirstTask",
+            "SecondTask",
+            "Sequence（展開後）",
+            "etc（括弧内）",
+            "L1サブヘッダ（prefix）"
+          ],
+          "note": "ツール(CreateSchedulingRequirement)はExcelの値をそのまま出力する。Excel側が SWC/Node 形式に変更されたことで発生する。NP-1: 括弧付き SWC (X(sfx)) の場合、normalize(X)/X(sfx) 形式になる（2026-05-16 m02 yaml 確認）"
+        },
+        {
+          "id": "M-03",
+          "level": "G-1",
+          "name": "PF タスク・SPI タスク Preempt プレフィックス付与",
+          "cause_tag": "chksimyml(2-①)",
+          "condition": "new == f'Preempt/{old}'",
+          "applicable_cols": [
+            "FirstTask",
+            "SecondTask",
+            "Sequence（展開後）"
+          ],
+          "note": "NP-2: Sequence 内の SPI タスク（b2m_spi_*, m2b_spi_*, viddraw 等）も同一パターン。旧値 'b2m_spi_1st_IO_recv' → 新値 'Preempt/b2m_spi_1st_IO_recv'（2026-05-16 m02 yaml 確認）。applicable_cols に Sequence（展開後）を追加"
+        },
+        {
+          "id": "M-04",
+          "level": "G-1",
+          "name": "行追加: PF_window",
+          "cause_tag": "infsimyml(1-③)",
+          "condition": "diff_type == 'TaskIDの追加'",
+          "applicable_files": [
+            "*cpuload_requirements.csv",
+            "processing_time_result.csv"
+          ],
+          "note": "実データ確認: 'TaskIDの追加' の diff_type は PF_window 行追加のみ。old_val/new_val の内容確認は不要。旧 condition の 'val' は未定義変数だったため削除。"
+        },
+        {
+          "id": "M-05",
+          "level": "G-1",
+          "name": "列追加: Target",
+          "cause_tag": "chksimyml(2-②)",
+          "condition": "diff_type == 'キーの追加' AND 'Target' in new_val",
+          "applicable_files": [
+            "before_requirements.csv",
+            "after_requirements.csv"
+          ],
+          "note": "annotations.json の details には列名フィールドがないため diff_type と new_val で判定する。旧 condition の 'col_added/col_name' は未定義変数だったため削除。"
+        },
+        {
+          "id": "M-06",
+          "level": "G-1",
+          "name": "キー名変更: Tool Tag → Tool Branch",
+          "cause_tag": "slot.yaml(3-①) / ver3ツール使用(25)",
+          "condition": "old が 'Tool Tag:' で始まる かつ new が 'Tool Branch:' で始まる",
+          "applicable_files": [
+            "input_info.txt"
+          ]
+        },
+        {
+          "id": "M-07",
+          "level": "G-1",
+          "name": "要件ファイルパス変更",
+          "cause_tag": "ver3 req path(26)",
+          "condition": "old に 'TSS4_1AR2_RC01/' を含む かつ new に 'TSS4_V3_1A_RC01/' を含む",
+          "applicable_files": [
+            "input_info.txt"
+          ]
+        },
+        {
+          "id": "M-08",
+          "level": "G-1",
+          "name": "TaskList variant 括弧削除（A パターン）",
+          "cause_tag": "budget.yaml(4-②A)",
+          "condition": "re.sub(r'\\(.*\\)', '', old) == new かつ SplAd プレフィックスなし",
+          "applicable_cols": [
+            "TaskList"
+          ]
+        },
+        {
+          "id": "M-09",
+          "level": "G-1",
+          "name": "TaskList SplAd ラッパー除去（B パターン）",
+          "cause_tag": "budget.yaml(4-②B)",
+          "condition": "re.match(r'^SplAd\\((.+)\\)$', old) でマッチ かつ new == SplAd展開内容",
+          "applicable_cols": [
+            "TaskList"
+          ],
+          "note": "SplAd(TJSupport)→TrafficJamSupport のような展開後の別名変換は G-2 に委ねる"
+        },
+        {
+          "id": "M-10",
+          "level": "G-1",
+          "name": "行消失: pf_1ms_base / pf_1ms_mid（input_data）",
+          "cause_tag": "ツール起因(21/23) ← パターン9/28の連鎖",
+          "condition": "diff_type in ['pf_1ms_base行の消失', 'pf_1ms_mid行の消失']",
+          "applicable_files": [
+            "input_data_ba.csv",
+            "input_data_igr.csv"
+          ],
+          "note": "annotations.json を直接処理するため CSV 再読みは行わない。diff_type 文字列で判定する（旧condition の 'node 列の値が re.match...' は v0.2.0 以前の誤記）"
+        },
+        {
+          "id": "M-11",
+          "level": "G-1",
+          "name": "NodeName 逆変換: pf_1ms → PF_1msTask",
+          "cause_tag": "ツール起因(9/28)",
+          "condition": "diff_type == 'NodeNameの変化' AND re.match(r'^pf_1ms_', old_val)",
+          "applicable_files": [
+            "*cpuload_requirements.csv",
+            "processing_time_result.csv"
+          ],
+          "note": "旧 condition の 'normalize(new) == normalize(TaskID)' は TaskID が未定義のため削除。diff_type + old_val パターンのみで確定判定できる。実例: pf_1ms_base→PF_1msTask(2SoC, Base)"
+        },
+        {
+          "id": "M-12",
+          "level": "G-2",
+          "name": "SWC/Node ペア変換（X→Y/X、対応表使用）",
+          "cause_tag": "chksimyml(2-①)",
+          "condition": "new が 'SWC/Node' 形式 かつ SWC_NODE_MAP に old（Node名）が存在する",
+          "applicable_cols": [
+            "Sequence（展開後）",
+            "Sender",
+            "Receiver"
+          ],
+          "note": "SWC_NODE_MAP は cause_rules.json に外部定義"
+        },
+        {
+          "id": "M-13",
+          "level": "G-2",
+          "name": "RequirementOwner / id-name 逆変換（SWC/Node → SWC名）",
+          "cause_tag": {
+            "schedule_result.csv": "chksimyml(2-③)",
+            "after_requirements.csv": "ツール起因(18/30)(要確認)",
+            "before_requirements.csv": "ツール起因(19/31)(要確認)",
+            "default": "ツール起因(18/19/30/31)(要確認)"
+          },
+          "condition": "new == old.split('/')[0] かつ old が '/' を含む",
+          "applicable_cols": [
+            "RequirementOwner",
+            "name"
+          ],
+          "note": "schedule_result.csv の id/nameの変化（AhbAhs/Main→AhbAhs 等）は chksimyml(2-③) と確認済み（2026-05-16 USER確認）。after/before_requirements.csv の RequirementOwner 変化はツール起因(18/19/30/31)(要確認)。ファイル名でタグを切り替える。"
+        },
+        {
+          "id": "M-14",
+          "level": "G-2",
+          "name": "TaskList 別名変換（C パターン、対応表使用）",
+          "cause_tag": "budget.yaml(4-②C)",
+          "condition": "BUDGET_ALIAS_MAP に old（括弧除去後）が存在する",
+          "applicable_cols": [
+            "TaskList"
+          ],
+          "note": "BUDGET_ALIAS_MAP は cause_rules.json に外部定義（AhbAhs→Main, LgtCtl→LightingControl, TJSupport→TrafficJamSupport 等）"
+        },
+        {
+          "id": "M-15",
+          "level": "G-1",
+          "name": "mid行の時刻値変化（csv_data_tsync）",
+          "cause_tag": "infsimyml(1-③)",
+          "condition": "diff_type == 'mid行の時刻値変化'",
+          "applicable_files": [
+            "before_csv_data_tsync_PlusBA.csv",
+            "after_csv_data_tsync_PlusBA.csv"
+          ],
+          "note": "diff_type の文字列一致のみで判定可能。old_val/new_val の内容によらず確定"
+        },
+        {
+          "id": "M-16",
+          "level": "G-1",
+          "name": "Nodeの順序入れ替わり（input_data連鎖）",
+          "cause_tag": "ツール起因(22/24) ← パターン21/23の連鎖",
+          "condition": "diff_type == 'Nodeの順序入れ替わり'",
+          "applicable_files": [
+            "input_data_ba.csv",
+            "input_data_igr.csv"
+          ]
+        },
+        {
+          "id": "M-17",
+          "level": "G-1",
+          "name": "pf_1ms消失（csv_data_tsync）",
+          "cause_tag": "ツール起因(パターン9/28の連鎖) ← input_data と同一原因",
+          "condition": "diff_type が 'pf_1ms_base行の消失' または 'pf_1ms_mid行の消失'",
+          "applicable_files": [
+            "before_csv_data_tsync_PlusBA.csv",
+            "after_csv_data_tsync_PlusBA.csv"
+          ],
+          "note": "M-10 と同一原因だが適用ファイルが異なる"
+        },
+        {
+          "id": "M-18",
+          "level": "G-1",
+          "name": "PNG ファイル消失（pf_1ms グラフ）",
+          "cause_tag": "ツール起因(パターン9/28の連鎖) ← result=NA によりグラフ未生成",
+          "condition": "diff_type == 'ファイル消失' かつ file_name が re.match(r'duration_of_PF_1msTask', name) でマッチ",
+          "applicable_files": [
+            "*.png"
+          ],
+          "note": "Q-1 確認済み: NodeName が pf_1ms_base→PF_1msTask に変わり result=NA となったためグラフ生成されなかった"
+        },
+        {
+          "id": "M-19",
+          "level": "G-1",
+          "name": "PNG タイトル変化（RequirementId の normalize 波及）",
+          "cause_tag": "chksimyml(2-③)",
+          "condition": "diff_type == '画像差分' かつ new_val に 'viddraw' を含む",
+          "applicable_files": [
+            "*.png"
+          ],
+          "note": "Q-2 確認済み: グラフタイトルは chksimyml の RequirementID（VidDraw-01→viddraw-01）から生成される"
+        },
+        {
+          "id": "M-20",
+          "level": "G-1",
+          "name": "IsAnteroposteriorRelationFixed 変化（false→true）",
+          "cause_tag": "chksimyml(2-①)",
+          "condition": "diff_type が 'IsAnteroposteriorRelationFixedの変化' または diff_type が 'Sequence/Sender/Receiver/FirstTask/SecondTaskの変化' かつ old_val に 'IsAnteroposteriorRelationFixed: false' を含む",
+          "applicable_files": [
+            "before_requirements.csv",
+            "after_requirements.csv",
+            "schedule_result.csv",
+            "schedule_result_fail_list.csv"
+          ],
+          "note": "ツールコード確認済み（2026-05-16）: CreateSchedulingRequirement は Excel の DETERMINISTIC 列をそのまま出力。Excel 変更により false→true。chksimyml(2-①) のフォーマット変更起因と確定。"
+        },
+        {
+          "id": "M-21",
+          "level": "G-1",
+          "name": "etc 列の埋め込みノード名変化（SWC/Node 形式への統一）",
+          "cause_tag": "chksimyml(2-①)",
+          "condition": "diff_type == 'etcの変化'",
+          "applicable_files": [
+            "schedule_result.csv"
+          ],
+          "note": "OCR 確認済み（2026-05-17, b01 Page29 diff 32）: schedule_result.csv の etc 列に記録されるノード名参照（例: [viewrdr_cirend] → [Preempt:viewrdr_cirend]）が chksimyml 2-① の SWC/Node 統一に伴い変化する。old/new の具体値は実データに依存するため diff_type のみで判定する。"
+        }
+      ]
+    },
+    {
+      "step": 4,
+      "name": "結果集計・出力",
+      "description": "全 details エントリの cause_tag を集計し、summary / detail の 2 CSV を出力する。さらに annotations.json の details フィールドに cause タグを書き戻す。Step 3 から渡される cause_tag は常に文字列（オブジェクト型は Step 3 で解決済み）。",
+      "logic": [
+        "cause_tag ごとに count を集計 → cause_summary.csv",
+        "全 details エントリをフラット出力 → cause_detail.csv",
+        "annotations.json の各エントリ details[].cause フィールドに cause_tag を書き込む（cause が空欄のエントリのみ更新、既存記入は保持）",
+        "Unknown レコードは note に 'diff_type={diff_type}, old={old_val}, new={new_val}' を記録して手動確認を促す"
+      ]
+    }
+  ],
+  "external_config": {
+    "file": "cause_rules.json",
+    "description": "マッチャーが参照する対応表・除外リスト等を外部ファイルで管理する。ツール本体を変更せずにルールを追加できる。",
+    "fields": {
+      "SWC_NODE_MAP": {
+        "description": "SWC名 → Node名 の対応表（M-12 用）",
+        "example": {
+          "AhbAhs": "Main",
+          "LgtCtl": "LightingControl"
+        }
+      },
+      "BUDGET_ALIAS_MAP": {
+        "description": "budget.yaml の旧 TaskList 名 → 新 Node 名 の対応表（M-14 用）",
+        "example": {
+          "AhbAhs": "Main",
+          "LgtCtl": "LightingControl",
+          "TJSupport": "TrafficJamSupport"
+        }
+      },
+      "routing_table": {
+        "description": "ROUTING_TABLE を外部から拡張するためのリスト。各エントリは {\"pattern\": \"fnmatch形式\", \"matchers\": [\"M-XX\", ...]} の形式。load_rules() が起動時に読み込み、既存パターンと重複しないエントリを ROUTING_TABLE に追記する。既存マッチャー（M-01〜M-21）を新規ファイルパターンに対応させる場合に使用する。空リスト [] が初期値。",
+        "example": [
+          {
+            "pattern": "*custom_output.csv",
+            "matchers": [
+              "M-01",
+              "M-13"
+            ]
+          }
+        ]
+      }
+    },
+    "path": "design/cause_rules.json",
+    "path_note": "workflow_spec.data_assets.cause_rules_json.path と一致。デフォルト引数: --rules が省略された場合は None（load_rules() 内でチェック）。"
+  },
+  "cli": {
+    "command": "python3 scripts/cause_classifier.py --annotations output/foo_annotations.json [--rules design/cause_rules.json] [--out-prefix output/ver1_m02]",
+    "note": "CSV ファイルを再読みしないため --old/--new は不要。annotations.json の details エントリのみを入力とする。",
+    "args": {
+      "--annotations": "output_diff.py が生成した annotations.json（必須）",
+      "--rules": "cause_rules.json のパス（省略時はスクリプトと同階層の cause_rules.json）",
+      "--out-prefix": "出力ファイルのプレフィックス（省略時は annotations のパスベース）"
+    }
+  },
+  "workflow_position": {
+    "description": "4フェーズワークフロー（Phase-0/A/B/C）の Phase-B Step B-1 を担う。output_diff.py（Phase-A）が生成した annotations.json の details[] に cause タグを自動付与する。旧設計では annotate_diff.py という仮称で設計されていた役割を具体化したもの。",
+    "workflow_spec_ref": "design/workflow_spec_v120_draft.json",
+    "phase": "B — 自動仕訳",
+    "step": "B-1（cause 自動付与 + summary/detail CSV 出力）",
+    "complete_condition": "annotations.json の cause タグが自動補完されており、cause_summary.csv / cause_detail.csv が生成されていること",
+    "actor": "TOOL（自動実行）",
+    "context": {
+      "before_this_tool": "Phase-A A-1: output_diff.py により annotations.json（スケルトン）が生成されていること",
+      "after_this_tool": "Phase-B B-2: output_diff.py を再実行し cause バッジ付き HTML を生成する。Phase-C: review_server.py（未実装）でユーザーが cause を確認・修正する。"
+    },
+    "automation_boundary": "B-1 は TOOL が実行（自動化）。B-2 は USER が A-1 と同じコマンドを再実行する（形式上は USER 操作だが内容は自動生成）。",
+    "plugin_extension": {
+      "description": "scripts/matchers/ ディレクトリに *.py を配置することで cause_classifier.py 本体を修正せずに新規マッチャーを追加できる（プラグインアーキテクチャ）。",
+      "interface": "MATCHER_ENTRIES / ROUTING_ENTRIES を各プラグインファイルに定義する。",
+      "details": "design/cause_classifier_spec.json plugin_architecture セクション参照"
+    }
+  },
+  "test_strategy": {
+    "file": "test/test_cause_classifier.py",
+    "approach": "pytest。入力は fixtures/ に最小 CSV を用意する。",
+    "test_cases": [
+      {
+        "id": "TC-01",
+        "description": "normalize 変換（M-01）: NodeName 'VidDraw' → 'viddraw' が G-1 として仕訳される"
+      },
+      {
+        "id": "TC-02",
+        "description": "SWC/Node 自己参照（M-02）: Sender 'InlyrGl' → 'InlyrGl/InlyrGl' が G-1 として仕訳される"
+      },
+      {
+        "id": "TC-03",
+        "description": "Preempt プレフィックス（M-03）: FirstTask 'viewrdr_cirend' → 'Preempt/viewrdr_cirend' が G-1 として仕訳される"
+      },
+      {
+        "id": "TC-04",
+        "description": "PF_window 行追加（M-04）: NodeName='PF_window1(...)' の新規行が G-1 として仕訳される"
+      },
+      {
+        "id": "TC-05",
+        "description": "Target 列追加（M-05）: after_requirements.csv の Target 列追加が G-1 として仕訳される"
+      },
+      {
+        "id": "TC-06",
+        "description": "Tool Tag→Tool Branch（M-06）: input_info.txt L01 キー変更が G-1 として仕訳される"
+      },
+      {
+        "id": "TC-07",
+        "description": "要件ファイルパス変更（M-07）: TSS4_1AR2_RC01/ → TSS4_V3_1A_RC01/ が G-1 として仕訳される"
+      },
+      {
+        "id": "TC-08",
+        "description": "variant 括弧削除（M-08）: 'ViewMo(m01_m02)' → 'ViewMo' が G-1 として仕訳される"
+      },
+      {
+        "id": "TC-09",
+        "description": "SplAd ラッパー除去（M-09）: 'SplAd(EventSpm)' → 'EventSpm' が G-1 として仕訳される"
+      },
+      {
+        "id": "TC-10",
+        "description": "pf_1ms 行消失（M-10）: input_data_ba.csv の pf_1ms_base 行消失が G-1 として仕訳される"
+      },
+      {
+        "id": "TC-11",
+        "description": "NodeName 逆変換（M-11）: 'pf_1ms_base' → 'PF_1msTask(2SoC, Base)' が G-1 として仕訳される"
+      },
+      {
+        "id": "TC-12",
+        "description": "SWC/Node ペア変換（M-12）: Sequence 'AhbAhs' → 'AhbAhs/Main' が G-2 として仕訳される"
+      },
+      {
+        "id": "TC-13",
+        "description": "RequirementOwner 逆変換（M-13）: 'AhbAhs/Main' → 'AhbAhs' が G-2 として仕訳される"
+      },
+      {
+        "id": "TC-14",
+        "description": "BUDGET_ALIAS C（M-14）: 'AhbAhs(b01_m01_m02)' → 'Main' が G-2 として仕訳される"
+      },
+      {
+        "id": "TC-15",
+        "description": "Unknown: どのマッチャーにも該当しない差分が Unknown として記録される"
+      },
+      {
+        "id": "TC-16",
+        "description": "Sequence 列展開: リスト形式の文字列を要素ごとに展開してマッチングが行われる"
+      },
+      {
+        "id": "TC-17",
+        "description": "cause_summary.csv: cause_tag 別件数集計が正しく出力される"
+      },
+      {
+        "id": "TC-18",
+        "description": "cause_detail.csv: 全セルレコードが出力される（Unknown を含む）"
+      },
+      {
+        "id": "TC-19",
+        "description": "annotations.json 書き戻し: details フィールドに cause タグが追記され、既存 reason は保持される"
+      },
+      {
+        "id": "TC-20",
+        "description": "cause 記入済みエントリの保護: diff_type 一致でも cause が既入りのエントリは上書きされない"
+      },
+      {
+        "id": "TC-21",
+        "description": "M-15: before_csv_data_tsync_PlusBA.csv の mid行の時刻値変化 が G-1（infsimyml(1-③)）として仕訳される"
+      },
+      {
+        "id": "TC-22",
+        "description": "M-16: input_data_ba.csv の Nodeの順序入れ替わり が G-1（ツール起因22/24）として仕訳される"
+      },
+      {
+        "id": "TC-23",
+        "description": "M-17: after_csv_data_tsync_PlusBA.csv の pf_1ms_base行の消失 が G-1（ツール起因パターン9/28連鎖）として仕訳される"
+      },
+      {
+        "id": "TC-24",
+        "description": "M-18: duration_of_PF_1msTask(2SoC, Base).png の ファイル消失 が G-1（ツール起因パターン9/28連鎖）として仕訳される"
+      },
+      {
+        "id": "TC-25",
+        "description": "M-19: duration_of_VidDraw-01.png の 画像差分 が G-1（chksimyml(2-③)）として仕訳される"
+      },
+      {
+        "id": "TC-26",
+        "description": "cause 記入済みエントリの保護: annotations.json に既に cause が記入されているエントリは上書きされない"
+      }
+    ]
+  },
+  "known_issues_and_notes": [
+    {
+      "id": "N-01",
+      "note": "パターン9/28/18/19/30/31 は 'ツール起因か要確認' のため cause_tag に '(要確認)' サフィックスを付与し Unknown とは区別する"
+    },
+    {
+      "id": "N-02",
+      "note": "M-01 で normalize(old)==new が成立しても、ファイル名が before_requirements.csv かつ列が RequirementOwner の場合は chksimyml(2-③) を優先する（infsimyml は NodeName 列のみ）"
+    },
+    {
+      "id": "N-03",
+      "note": "after_requirements.csv の Sequence 列は旧データが部分変換済み（AhbAhs/Main が既に存在）。M-02/M-12 が誤検知しないよう、old が既に '/' を含む場合はスキップする"
+    },
+    {
+      "id": "N-04",
+      "note": "（v0.2.0 で廃止）input_data_ba/igr.csv の大容量問題は annotations.json を直接処理する設計変更により解消済み。CSV を再読みしないため LARGE_FILE_SKIP は不要。"
+    },
+    {
+      "id": "N-05",
+      "note": "schedule_result_fail_list.csv は 2 段ヘッダ構造（L0=要件ID, L1=変数名）。L1 をヘッダとして扱い、L0 は metadata として保持する"
+    },
+    {
+      "id": "N-06",
+      "note": "Q-1確認済み: PNG消失（duration_of_PF_1msTask(2SoC, Base/Mid).png）は パターン9/28 の連鎖が原因。NodeName が pf_1ms_base→PF_1msTask に変わり result=NA となりグラフ未生成。cause_tag='ツール起因(パターン9/28の連鎖)'"
+    },
+    {
+      "id": "N-07",
+      "note": "Q-2確認済み: PNG タイトル変化（duration_of_VidDraw-01.png）の cause は chksimyml(2-③)。グラフタイトルは chksimyml の RequirementID（VidDraw-01→viddraw-01）から生成されることを infsimyml/chksimyml 双方のフィールドで確認"
+    },
+    {
+      "id": "N-08",
+      "note": "Q-3確認済み: mid行の時刻値変化 は自動付与対象とする（diff_type 文字列一致で infsimyml(1-③) を付与）"
+    }
+  ],
+  "plugin_architecture": {
+    "plugin_dir": "scripts/matchers/",
+    "description": "scripts/matchers/ ディレクトリに配置した *.py ファイルは cause_classifier.py の起動時に自動ロードされ、MATCHER_REGISTRY / ROUTING_TABLE に追記される。この仕組みにより cause_classifier.py 本体を変更せずに新規マッチャーを追加できる。",
+    "plugin_interface": {
+      "MATCHER_ENTRIES": {
+        "type": "list[tuple[str, str, callable, str | callable]]",
+        "description": "(matcher_id, level, match_fn, cause_tag_or_fn) の形式のリスト。",
+        "level_values": [
+          "G-1",
+          "G-2"
+        ]
+      },
+      "ROUTING_ENTRIES": {
+        "type": "list[tuple[str, list[str]]]",
+        "description": "(fnmatchファイルパターン, [matcher_id, ...]) の形式のリスト。"
+      }
+    },
+    "load_order": "ファイル名の辞書順（sorted()）でロード。重複 matcher_id は後勝ち（上書き）。",
+    "error_handling": "ロードに失敗したプラグインは stderr に警告を出力してスキップ。他のプラグインのロードは継続。",
+    "template_file": "scripts/matchers/m_example.py.template",
+    "readme": "scripts/matchers/README.md",
+    "matcher_id_convention": "既存 M-01〜M-21 と重複しない番号を使用すること（例: M-22〜）。",
+    "context_keys": {
+      "file_name": "差分が発生したファイル名",
+      "diff_type": "差分タイプ（例: '値の変化'）",
+      "old_val": "変更前の値",
+      "new_val": "変更後の値",
+      "old": "old_val の別名",
+      "new": "new_val の別名",
+      "swc_node_map": "SWC→ノード名マップ（cause_rules.json から）",
+      "budget_alias_map": "バジェットエイリアスマップ（cause_rules.json から）"
+    }
+  },
+  "_version_note": "0.7.0: plugin_architecture セクション追加（scripts/matchers/ プラグイン機構）、external_config.fields.routing_table 追加 | v0.7.1: external_config に path フィールド追加（workflow_spec との整合）。"
+}

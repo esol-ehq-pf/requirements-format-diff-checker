@@ -1,0 +1,579 @@
+{
+  "title": "フォーマット変更差分整理ワークフロー",
+  "version": "1.2.0-draft",
+  "purpose": "過去プロジェクト（ver1/ver2/ver2.1）の要件ファイルを ver3 フォーマットへ変換する活動において、差分を機械的に仕訳し、手動確認対象を最小化する。さらに確認済みのパターン知識を次のプロジェクトに再利用可能な形で管理する。",
+  "_changes_from_v1.1.0": [
+    "Phase-0（YAML 差分自動検出）を追加。Output 差分より先に YAML 変化点を理解してから解析を進める。",
+    "旧 Phase-A/B/C を据え置き、Phase-0 を先行フェーズとして追加。",
+    "data_assets に input_yaml_before / input_yaml_after / yaml_diff_report を追加。",
+    "processing_schedule に ver1 b01 を追加、状態を更新。",
+    "open_questions に OQ-4（YAML diff 自動化）・OQ-5（review_ui 実装方針）を追加・確定。",
+    "Phase-C をレビュー UI（FastAPI + Vue 3 TypeScript）に刷新。",
+    "workflow.automation_boundary を追加（Phase-0〜B が自動、Phase-C が USER 向け）。",
+    "file_layout に scripts/yaml_diff.py / review_server.py / review_ui/ を追加。",
+    "プラグインアーキテクチャを追加。scripts/matchers/ ディレクトリにプラグイン .py を配置するだけで cause_classifier.py 本体を修正せずに新規マッチャーを追加できる（MATCHER_ENTRIES / ROUTING_ENTRIES インターフェース）。cause_rules.json に routing_table セクションを追加し、既存マッチャーを新規ファイルパターンに対応させる JSON 宣言も可能。",
+    "yaml_diff_spec.json を新規作成（yaml_diff.py Phase-0 仕様）。review_server_spec.json を新規作成（review_server.py + review_ui/ Phase-C 仕様）。"
+  ],
+  "actors": {
+    "USER": "担当者（プロジェクト知識保有者）。変化点の正誤判断・Unknown の原因調査・パターン登録の承認を行う。",
+    "TOOL": "cause_classifier.py / output_diff.py 等の自動化スクリプト群。",
+    "KB": "知識ベース（cause_rules.json / format_change_pattern_log.md）。過去に確認済みのパターンを蓄積する。"
+  },
+  "data_assets": {
+    "input_yaml_before": {
+      "path": "input/requirement_file/{variant}-before/",
+      "path_note": "ver1 では {variant} = m01/m02/b01 等。ver2/ver2.1 では {variant} の命名規則が変わる可能性あり（入手時に確認してフォルダ名を processing_schedule に記録する）。",
+      "description": "旧フォーマット要件 YAML 群（before）。変換前の原本。",
+      "owner": "USER（顧客から受領）",
+      "lifetime": "read-only。変更しない。"
+    },
+    "input_yaml_after": {
+      "path": "input/requirement_file/{variant}-after/",
+      "path_note": "ver1 では {variant} = m01/m02/b01 等。ver2/ver2.1 では {variant} の命名規則が変わる可能性あり（入手時に確認してフォルダ名を processing_schedule に記録する）。",
+      "description": "新フォーマット要件 YAML 群（after）。変換後の成果物。",
+      "owner": "USER（顧客から受領）",
+      "lifetime": "read-only。変更しない。"
+    },
+    "input_old": {
+      "path": "input/{project}_{variant}_旧解析結果/",
+      "description": "旧フォーマット要件ファイルで解析した過去の結果フォルダ",
+      "owner": "USER（顧客から受領）",
+      "lifetime": "read-only。変更しない。"
+    },
+    "input_new": {
+      "path": "input/{project}_{variant}_{解析種別}_再解析結果/",
+      "description": "ver3 フォーマット要件ファイルで再解析したフォルダ。解析種別（AP/PKSB 等）はバリアントにより異なる。m02 は /output/ サブフォルダあり、m01 は直置き（サブフォルダなし）。実パスは processing_schedule を参照。",
+      "owner": "USER（顧客から受領 or 自身で実行）",
+      "lifetime": "read-only。変更しない。"
+    },
+    "yaml_diff_report": {
+      "path": "output/{project}_{variant}_yaml_diff_report.json",
+      "description": "YAML before/after の差分をファイル・キー単位でまとめたレポート。Phase-0 で生成し、どの変化点がどのマッチャーで理由付けられるかを事前確認するために使う。",
+      "owner": "TOOL が生成（or USER が手動確認）。",
+      "note": "Output 差分に先行して作成することで、理由付けの漏れを早期に検出できる。",
+      "schema_note": "yaml_diff.py が未実装のため schema 未確定。yaml_diff.py 実装時に確定予定。期待フィールド: {diff_types: [...], uncovered_diff_types: [...], entries: [{file, diff_type, key_path, before, after}]}"
+    },
+    "annotations_json": {
+      "path": "output/{basename}_annotations.json",
+      "basename_convention": "{project}_{variant}_output_diff 。例: ver1_m02_output_diff → output/ver1_m02_output_diff_annotations.json。--out に output/{basename}.html を指定すると output_diff.py が <out_stem>_annotations.json を自動生成する。この命名規則は output_diff.py が生成するファイル専用。yaml_diff.py が生成する yaml_diff_report は {project}_{variant}_yaml_diff_report という別命名規則を使用する。",
+      "description": "ファイル単位の差分一覧 + cause タグの記録ファイル。ツールと USER が協調して更新する。",
+      "schema": {
+        "entries": {
+          "{file_name}": {
+            "folder": "相対フォルダパス",
+            "file": "ファイル名",
+            "reason": "USER が記入する差分の総括コメント（1〜2行）",
+            "details": [
+              {
+                "diff_type": "変化の種別（NodeNameの変化 等）",
+                "old_val": "旧値または変化の説明",
+                "new_val": "新値または変化の説明",
+                "cause": "TOOL が自動付与 or USER が手動記入する原因タグ",
+                "hunk_pattern": "diff hunk 内の +/- 行に re.search でマッチすれば、その hunk 直前にバッジバーを表示する。空文字の場合はファイルレベルバッジのみ（hunk バッジなし）。cause_classifier.py または手動で書き込む。output_diff.py がバッジ表示に使用する。"
+              }
+            ]
+          }
+        }
+      },
+      "update_rules": [
+        "cause が空欄のエントリのみ TOOL が上書きする（手動記入を保護）",
+        "reason フィールドは TOOL が変更しない（USER 専用）",
+        "新しい diff_type が出現した場合、cause='' のままにして USER に通知する。通知方法: cause_classifier.py の stdout に 'Unknown diff_type 検出: <diff_type>' と出力する。review_ui 実装後は Unknown バッジ（赤）で UI 上に表示する。"
+      ]
+    },
+    "cause_rules_json": {
+      "path": "design/cause_rules.json",
+      "description": "マッチャーが参照する対応表。KB の機械可読部分。",
+      "schema": {
+        "SWC_NODE_MAP": {
+          "AhbAhs": "Main",
+          "LgtCtl": "LightingControl"
+        },
+        "BUDGET_ALIAS_MAP": {
+          "AhbAhs": "Main",
+          "LgtCtl": "LightingControl",
+          "TJSupport": "TrafficJamSupport"
+        },
+        "PROJECT_VARIANTS": [
+          "b01",
+          "m01",
+          "m02",
+          "m03"
+        ],
+        "KNOWN_DIFF_TYPES": [
+          "NodeNameの変化",
+          "pf_1ms_base行の消失",
+          "...（既知の diff_type 全種）"
+        ],
+        "routing_table": [
+          {
+            "pattern": "<fnmatch形式>",
+            "matchers": [
+              "M-XX",
+              "..."
+            ]
+          }
+        ]
+      },
+      "owner": "USER が承認 → TOOL が参照。直接編集は USER のみ。"
+    },
+    "format_change_pattern_log": {
+      "path": "design/format_change_pattern_log.md",
+      "description": "パターンの発見経緯・実データ例・変換式を人間可読形式で記録した知識ベース。cause_rules.json の設計根拠。",
+      "owner": "USER が最終承認。TOOL は新パターン候補をドラフトとして追記できる。"
+    },
+    "cause_summary_csv": {
+      "path": "output/{basename}_cause_summary.csv",
+      "description": "cause タグ別件数集計。顧客への報告資料の原票。",
+      "columns": [
+        "cause_tag",
+        "pattern_no",
+        "level",
+        "count",
+        "files_affected"
+      ],
+      "owner": "TOOL が生成。USER がレビューして提出。"
+    },
+    "cause_detail_csv": {
+      "path": "output/{basename}_cause_detail.csv",
+      "description": "details エントリ単位の全レコード。Unknown の追跡・パターン発見に使う。",
+      "columns": [
+        "file",
+        "diff_type",
+        "old_val",
+        "new_val",
+        "cause_tag",
+        "level",
+        "note"
+      ],
+      "owner": "TOOL が生成。USER が Unknown 行を調査してパターンに昇格させる。"
+    },
+    "output_html": {
+      "path": "output/{basename}.html",
+      "path_note": "{basename} = {project}_{variant}_output_diff のため展開例: output/ver1_m02_output_diff.html。--out 引数に output/{basename}.html を指定すると output_diff.py が同パスに生成する。",
+      "description": "ファイル単位の差分一覧 HTML。cause バッジ付きで差分を視覚的に確認できる。",
+      "owner": "TOOL が生成。USER がレビューに使用。"
+    }
+  },
+  "workflow": {
+    "overview": "4フェーズ構成。Phase-0（YAML 差分自動検出）→ Phase-A（Output 差分検出）→ Phase-B（自動仕訳）→ Phase-C（レビュー UI による確認・更新・追加）",
+    "rationale": "Phase-0〜B を全自動化し、Phase-C の USER 作業をレビュー UI に集約する。YAML が変化の直接証拠であり Output は変化の結果。先に YAML 差分で変化点を理解しておくことで、Output 差分の理由付けをより確実に行える。",
+    "automation_boundary": {
+      "automated": "Phase-0（YAML diff）・B-1（cause 自動付与）: TOOL が実行。USER はパスを確認してコマンドを起動するのみ。Phase-B の B-2（HTML 再生成）は USER が A-1 と同じコマンドを再実行する形のため USER 操作だが、内容は自動生成。",
+      "user_facing": "Phase-C（レビュー UI）: cause の確認・修正・Unknown の手動入力・新パターン登録申請",
+      "note": "Phase-A の output_diff.py も TOOL スクリプトだが、--old/--new パスの指定が必要なため USER がコマンドラインで実行する。将来的にはパスを設定ファイル化して Phase-0 と連続実行できるようにすることを検討。"
+    },
+    "phases": [
+      {
+        "phase": "0",
+        "name": "YAML 差分自動検出",
+        "trigger": "before/after YAML が揃ったとき（input_old/input_new より先に行える）",
+        "skip_condition": "before YAML 未入手の場合は Phase-0 全体をスキップして Phase-A へ進む。カバレッジチェックなしのまま Phase-A/B を実行し、Phase-C で Unknown が多ければ C-3 を実施する。",
+        "purpose": "要件 YAML の変化点を把握し、既存マッチャー（M-01〜M-21）の網羅性を事前検証する。未カバーの diff_type を早期に発見して Phase-A 前にマッチャー追加できる。",
+        "steps": [
+          {
+            "step": "0-1",
+            "actor": "TOOL",
+            "action": "YAML before/after を比較し、diff_type 単位で変化点を列挙する",
+            "command": "python3 scripts/yaml_diff.py --before input/requirement_file/{variant}-before/ --after input/requirement_file/{variant}-after/ --out output/{project}_{variant}_yaml_diff_report.json",
+            "output": [
+              "output/{project}_{variant}_yaml_diff_report.json（diff_type 別変化点一覧）"
+            ],
+            "note": "m01/m02 は before/after YAML 入手済みのため今すぐ実行可能。b01 は after のみ入手済み・before 入手待ち。",
+            "note_implementation": "yaml_diff.py は未実装。コマンドは設計値であり、yaml_diff.py 実装時に確定する。"
+          },
+          {
+            "step": "0-2",
+            "actor": "TOOL",
+            "action": "yaml_diff_report.json の diff_type 一覧と cause_classifier_spec.json の M-01〜M-21 のカバレッジを自動チェックする",
+            "command": "python3 scripts/yaml_diff.py --before input/requirement_file/{variant}-before/ --after input/requirement_file/{variant}-after/ --out output/{project}_{variant}_yaml_diff_report.json --check-coverage design/cause_classifier_spec.json",
+            "note": "0-1 と同じコマンドに --check-coverage オプションを追加した形。実驌時に 0-1 と連続実行可能。",
+            "note_implementation": "yaml_diff.py は未実装。--check-coverage オプションの仕様は yaml_diff.py 実装時に確定する。",
+            "output": [
+              "stdout に未カバー diff_type の一覧を出力"
+            ],
+            "decision": [
+              "未カバー diff_type あり → Phase-C の C-3（新マッチャー追加）を先に実施してから Phase-A へ進む",
+              "全 diff_type カバー済み → Phase-A へ進む（Phase-0 完了）",
+              "before YAML 未入手で 0-1 をスキップした場合 → Phase-A へ直接進む（カバレッジチェックなし・Phase-0 スキップ完了）"
+            ]
+          }
+        ]
+      },
+      {
+        "phase": "A",
+        "name": "Output 差分検出",
+        "trigger": "Phase-0 完了後（or before YAML 未入手のため Phase-0 をスキップする場合）",
+        "steps": [
+          {
+            "step": "A-1",
+            "actor": "USER（--old/--new パスを指定してコマンドを実行する）",
+            "action": "input_old / input_new のパスを確認し、コマンドを実行する",
+            "command": "python3 scripts/output_diff.py --old input/OLD --new input/NEW --out output/{basename}.html",
+            "command_note": "OLD/NEW は processing_schedule の old_input/new_input の実パスで置換する。{basename} は {project}_{variant}_output_diff 形式。例: --old input/scheduling_requirement_check_analysis_result/ --new input/ver1_m02_AP_再解析結果/output/ --out output/ver1_m02_output_diff.html",
+            "output": [
+              "output/{basename}.html（ファイル単位の差分一覧）",
+              "output/{basename}_annotations.json（cause='' のスケルトン）"
+            ],
+            "note": "annotations.json が既存の場合は新規エントリのみ追加され、既存の cause/reason は保持される"
+          }
+        ],
+        "complete_condition": "output/{basename}.html と output/{basename}_annotations.json が生成されていること"
+      },
+      {
+        "phase": "B",
+        "name": "自動仕訳",
+        "trigger": "Phase-A 完了直後に続けて実行",
+        "steps": [
+          {
+            "step": "B-1",
+            "actor": "TOOL",
+            "action": "annotations.json の cause='' のエントリに対してマッチャーを適用し cause タグを自動付与する",
+            "command": "python3 scripts/cause_classifier.py --annotations output/{basename}_annotations.json --rules design/cause_rules.json --out-prefix output/{basename}",
+            "output": [
+              "output/{basename}_annotations.json（cause タグ補完済み）",
+              "output/{basename}_cause_summary.csv",
+              "output/{basename}_cause_detail.csv"
+            ]
+          },
+          {
+            "step": "B-2",
+            "actor": "USER",
+            "action": "A-1 と同じコマンドを再実行する。output_diff.py は <out_stem>_annotations.json を自動参照するため cause バッジ付き HTML が生成される。",
+            "command": "python3 scripts/output_diff.py --old input/OLD --new input/NEW --out output/{basename}.html",
+            "command_note": "A-1 と同じパスで再実行する。OLD/NEW は A-1 と同じ実パスを使用する。",
+            "output": [
+              "output/{basename}.html（cause バッジ付き）"
+            ],
+            "implementation_note": "output_diff.py L930: --annotations 省略時は <out_stem>_annotations.json を自動参照する仕様。B-1 で annotations.json に cause が書き込まれた後に同コマンドを再実行するとバッジが自動付与される。"
+          }
+        ],
+        "complete_condition": "output/{basename}_annotations.json の cause タグが自動補完されており、output/{basename}_cause_summary.csv / cause_detail.csv が生成されていること。B-2 の HTML 再生成完了（cause バッジ付き HTML が存在する）をもって完了とする。"
+      },
+      {
+        "phase": "C",
+        "name": "レビュー UI による確認・更新・追加",
+        "trigger": "Phase-B 完了後、USER がブラウザでレビュー UI を開く",
+        "purpose": "自動付与された cause を USER が確認し、修正・Unknown の手動入力・新パターン登録申請を一画面で行う。テキストエディタで JSON を直接編集する作業を排除する。",
+        "ui_spec": {
+          "tool": "scripts/review_server.py（FastAPI バックエンド）+ scripts/review_ui/（Vue 3 TypeScript フロントエンド）",
+          "command": "python3 scripts/review_server.py --annotations output/{basename}_annotations.json [--port 8080]",
+          "stack": "FastAPI + uvicorn（backend）, Vue 3 + TypeScript + Vite（frontend）",
+          "access": "ブラウザで http://localhost:8080 を開く",
+          "features": [
+            {
+              "feature": "差分一覧表示",
+              "detail": "annotations.json の details[] をファイル・diff_type 別に表形式で表示。cause バッジ（G-1=緑/G-2=黄/Unknown=赤）付き。"
+            },
+            {
+              "feature": "cause 編集",
+              "detail": "cause フィールドをインライン編集（テキスト入力 or プルダウン）。既知 cause タグの候補一覧を表示して選択可能。"
+            },
+            {
+              "feature": "reason 編集",
+              "detail": "ファイル単位の reason フィールドを編集（テキストエリア）。"
+            },
+            {
+              "feature": "Unknown フィルタ",
+              "detail": "Unknown 行のみ表示するフィルタボタン。確認作業の効率化。"
+            },
+            {
+              "feature": "保存",
+              "detail": "編集内容を annotations.json に書き戻す（Save ボタン or 自動保存）。"
+            },
+            {
+              "feature": "新パターン登録申請",
+              "detail": "Unknown 行に対して『新マッチャー候補』フォームを提示。diff_type・条件・cause タグを入力すると cause_classifier_spec.json への追加案を draft として出力する（C-3 の入力素材）。"
+            },
+            {
+              "feature": "再分類実行",
+              "detail": "UI から cause_classifier.py を再実行し結果を即時反映するボタン（新マッチャー追加後の確認に使う）。"
+            }
+          ],
+          "persistence": "編集は annotations.json に逐次書き込み。ブラウザを閉じても保持される。"
+        },
+        "steps": [
+          {
+            "step": "C-1",
+            "actor": "USER",
+            "action": "レビュー UI を起動し、Unknown 行を確認する",
+            "command": "python3 scripts/review_server.py --annotations output/{basename}_annotations.json",
+            "note_implementation": "review_server.py および review_ui/ は未実装。実装完了後に使用可能になる。それまでは cause_detail.csv を直接参照して手動確認する。",
+            "decision": [
+              "既知パターンへの当てはめが可能 → C-2（UI で cause を選択・保存）",
+              "新パターン発見 → C-3（UI の『新マッチャー候補』フォームを使って C-3 作業を開始）",
+              "調査が必要 → cause='ツール起因(要確認)' を UI で記入して C-4 へ"
+            ],
+            "command_note": "{basename} は processing_schedule の該当バリアントの basename_convention（{project}_{variant}_output_diff）で置換する。例: ver1_m02 の場合は output/ver1_m02_output_diff_annotations.json。"
+          },
+          {
+            "step": "C-2",
+            "actor": "USER",
+            "action": "UI 上で cause を選択または入力して保存する",
+            "output": [
+              "output/{basename}_annotations.json（cause 手動記入済み）"
+            ],
+            "note": "保存後に UI バックエンドが cause_classifier.py の再実行と output_diff.py の再生成を代行する（B-1/B-2 相当の処理を UI が自動実行）。review_server.py 未実装段階では、B-2 と同様に output_diff.py を手動で再実行すること。"
+          },
+          {
+            "step": "C-3",
+            "actor": "USER + TOOL",
+            "action": "新パターンを KB に登録する",
+            "substeps": [
+              "C-3a: UI の『新マッチャー候補』フォームで diff_type・条件・cause タグを入力 → draft JSON を出力",
+              "C-3b: format_change_pattern_log.md に新パターンを追記する（実データ例・変換式・cause タグ）",
+              "C-3c: cause_rules.json に必要な対応表エントリを追加する（SWC_NODE_MAP 等）。新規ファイルパターンを既存マッチャーにルーティングしたい場合は cause_rules.json の routing_table セクションにエントリを追加する（形式: {\"pattern\": \"fnmatch形式\", \"matchers\": [\"M-XX\", ...]}）。",
+              "C-3d: cause_classifier_spec.json の processing_steps[1].routing_table に新ファイルパターンのエントリを追加する。新マッチャーが既存ファイルに適用される場合は applicable_matchers に M-N を追加する。トップレベルの routing_table：[] は不使用（空のまま維持）。",
+              "C-3e: scripts/matchers/m_NN_<用途>.py にプラグインファイルを作成してマッチャーを実装する（MATCHER_ENTRIES / ROUTING_ENTRIES を定義）。cause_classifier.py 本体の修正は不要。pytest を実行して全テスト PASS を確認する。",
+              "C-3f: UI の『再分類実行』ボタンで結果を即時確認する",
+              "C-3g: git commit する"
+            ],
+            "note": "C-3 完了後に UI 上で再分類を実行すると、新パターンが即時反映される。"
+          },
+          {
+            "step": "C-4",
+            "actor": "USER",
+            "action": "ツール挙動または要件ファイルの変更を調査し原因を特定する",
+            "note": "調査完了後に C-2 で cause を更新する。"
+          }
+        ],
+        "complete_condition": "annotations.json 内の全 cause が空欄でないこと（Unknown を含む場合は C-4 で調査中の記録があること）。phase_c 完了のマークは USER が git commit することで記録する（commit メッセージに '(Phase-C complete)' を含める）。"
+      }
+    ]
+  },
+  "knowledge_base_management": {
+    "purpose": "確認済みのパターン知識を次のプロジェクト（ver1 m03以降、ver2、ver2.1）に再利用する。",
+    "layers": {
+      "L1_human_readable": {
+        "file": "design/format_change_pattern_log.md",
+        "role": "パターンの発見経緯・実データ例・変換式・注意事項を人間が読める形式で記録",
+        "update_timing": "新パターン発見時（C-3b）",
+        "scope": "プロジェクト横断。ver1/ver2/ver2.1 共通の知識を蓄積する。"
+      },
+      "L2_machine_readable": {
+        "file": "design/cause_rules.json",
+        "role": "マッチャーが参照する対応表・設定値。L1 の機械可読エクスポート。",
+        "update_timing": "新パターン発見時（C-3c）",
+        "scope": "ツールバージョン管理。SWC_NODE_MAP が変わったときはバージョン番号を更新する。"
+      },
+      "L2_5_matcher_spec": {
+        "file": "design/cause_classifier_spec.json",
+        "role": "cause_classifier.py の設計根拠・変更追跡のための仕様ドキュメント。cause_classifier.py はこのファイルを実行時に読み込まない。ROUTING_TABLE（ファイル名→マッチャーのマッピング）とマッチャー条件（M-01〜M-Nの判定ロジック）は cause_classifier.py にコードとして直接実装される。本ファイルは processing_steps[1].routing_table にルーティングテーブルの仕様を記載する（コードと同期維持）。",
+        "data_separation_note": "判定データ分離の内訳: SWC_NODE_MAP / BUDGET_ALIAS_MAP は cause_rules.json （L2）に外部化されコード修正不要。ROUTING_TABLE は cause_classifier.py にハードコード（特定バリアント名を含まない glob パターン）。新規ファイルパターンを追加する場合は cause_rules.json の routing_table セクション（既存マッチャー対応）または scripts/matchers/ プラグイン内の ROUTING_ENTRIES に追加する（cause_classifier.py 本体の修正不要）。OQ-2/3 確認済みの通り ver2/ver2.1 も同一ファイル構成のため現時点ではコード修正不要。",
+        "update_timing": "新マッチャー追加時（C-3d）— C-3e の実装より先に spec を更新する",
+        "scope": "プロジェクト横断。全バリアントで共有するマッチャー定義を管理する。"
+      },
+      "L3_executable": {
+        "file": "scripts/cause_classifier.py",
+        "role": "マッチャーロジックの実装。L2 （cause_rules.json）を実行時に読み込んで自動判定を実行する。ROUTING_TABLE（ファイル名 glob → M-ID）とマッチャー関数（M-01〜M-N）はコード内に直接実装される。新規マッチャーは scripts/matchers/ へプラグイン .py ファイルを追加することで登録できる（cause_classifier.py 本体の修正不要）。cause_rules.json の routing_table セクションからも ROUTING_TABLE を外部拡張できる。",
+        "update_timing": "新マッチャー追加時（C-3e）",
+        "scope": "プロジェクト横断で再利用可能。ROUTING_TABLE のファイル名パターンは特定バリアント名を含まない glob 形式。OQ-2/3 確認済みの通り現時点では ver2/ver2.1 に修正不要で適用可能。"
+      }
+    },
+    "reuse_strategy": {
+      "new_project_flow": [
+        "1. Phase-0 で YAML diff を確認し、既存マッチャー（M-01〜M-21）でカバーされているか確認する",
+        "2. cause_rules.json の SWC_NODE_MAP / BUDGET_ALIAS_MAP が新バリアントで有効か確認する（OQ-2/3 確認済み: 現時点では共通）",
+        "3. ルーティングテーブルにバリアント固有のファイル名差異がないか確認する（現時点では ver1 m01/m02/... は同一構成と確認済み）",
+        "4. Phase-A/B/C を実行する（Phase-C は Unknown=0 でも must。cause の品質を UI で目視確認する）",
+        "5. Unknown の件数が多い場合は新パターンを C-3 で登録し、ツールを育てる"
+      ],
+      "versioning": "cause_rules.json にプロジェクト識別子（'ver1_m02' 等）を持たせない。汎用テーブルとして維持し、プロジェクト固有の情報は annotations.json に持つ。",
+      "confirmed_commonality": {
+        "folder_structure": "ver2/ver2.1 も ver1 と同じフォルダ構成（OQ-2 確認済み 2026-05-16）",
+        "swc_node_map": "ver2/ver2.1 も ver1 と同じ SWC↔Node 対応関係（OQ-3 確認済み 2026-05-16）。変化が判明した場合は cause_rules.json に project_overrides セクションを追加する（ファイルを分けない）。"
+      }
+    }
+  },
+  "change_information_management": {
+    "purpose": "変化点情報の発生源・記録場所・管理責任者を明確にする。",
+    "sources": [
+      {
+        "source": "YAML 自動差分検出（Phase-0）",
+        "what": "YAML ファイルの diff_type・変化パターン（before/after キー・値の差異）・未カバー diff_type の一覧",
+        "where": "output/{project}_{variant}_yaml_diff_report.json（参考）、および cause_classifier_spec.json の新マッチャー定義（未カバーがある場合）",
+        "managed_by": "TOOL（yaml_diff.py が自動生成）、USER（未カバー diff_type の対応を判断）"
+      },
+      {
+        "source": "自動検出（output_diff.py）",
+        "what": "ファイル単位の diff_type・old_val・new_val",
+        "where": "annotations.json の details[]",
+        "managed_by": "TOOL"
+      },
+      {
+        "source": "自動仕訳（cause_classifier.py）",
+        "what": "cause タグ（G-1/G-2 判定結果）",
+        "where": "annotations.json の details[].cause",
+        "managed_by": "TOOL（G-1/G-2）、USER（手動確認・修正）"
+      },
+      {
+        "source": "手動記入（USER）",
+        "what": "差分の総括コメント・Unknown の原因・ツール起因の調査結果",
+        "where": "annotations.json の reason フィールド",
+        "managed_by": "USER専用。TOOL は変更しない。"
+      },
+      {
+        "source": "過去事例（format_change_pattern_log.md）",
+        "what": "パターン番号・変換式・実データ例・パターン間の連鎖関係",
+        "where": "design/format_change_pattern_log.md",
+        "managed_by": "USER が最終承認。TOOL は候補ドラフトを提示できる。"
+      }
+    ],
+    "single_source_of_truth": "annotations.json が「このバリアントの差分の正として何が変わったか」の唯一の記録。cause_summary/detail CSV は annotations.json から自動生成される派生物。"
+  },
+  "reporting": {
+    "purpose": "顧客（依頼元）への報告資料の生成。",
+    "steps": [
+      "output/{project}_{variant}_cause_summary.csv を Excel に貼り付け、cause タグ別に件数・影響ファイルを整理する",
+      "output/{project}_{variant}_output_diff_annotations.json の reason フィールドを差分説明欄として貼り付ける",
+      "output/{project}_{variant}_output_diff.html を添付資料として提出する（バッジで cause が視覚的に分かる）"
+    ],
+    "note": "報告書の『Output差分』シートへの記入は annotations.json → cause_summary.csv の流れで機械的に行える。"
+  },
+  "processing_schedule": {
+    "description": "バリアントの処理予定順序。",
+    "order": [
+      {
+        "priority": 1,
+        "project": "ver1",
+        "variant": "m02",
+        "status": "完了（2026-05-16）",
+        "phase_0": "完了（OCR 文書による YAML 変化点確認、M-01〜M-21 設計済み）",
+        "old_input": "input/scheduling_requirement_check_analysis_result/",
+        "new_input": "input/ver1_m02_AP_再解析結果/output/",
+        "yaml_before": "input/requirement_file/m02-before/",
+        "yaml_after": "input/requirement_file/m02-after/",
+        "note": "基準バリアント。42/42 Unknown=0 確認済み。"
+      },
+      {
+        "priority": 2,
+        "project": "ver1",
+        "variant": "b01",
+        "status": "Phase-0 完了（OCR 文書確認済み）。Phase-A 待ち（before 旧解析結果 入手待ち）",
+        "phase_0": "完了（OCR 文書 Page 7-30 で全33差分を M-01〜M-21 で確認済み）",
+        "old_input": "入手待ち（フォルダ名未確認。scheduling_requirement_check_analysis_result/ のサブフォルダか別フォルダかも未確認）",
+        "new_input": "入手待ち（フォルダ名未確認）",
+        "yaml_before": "input/requirement_file/b01-before/（入手待ち）",
+        "yaml_after": "input/requirement_file/b01-after/（入手済み）",
+        "note": "b01-before（旧解析結果・YAML）が揃い次第 Phase-0-1 → Phase-A を実行する。after YAML のみの段階でも Phase-0-1（diff レポート生成）は部分実行可能だが、before なしではカバレッジチェック（0-2）はスキップする。"
+      },
+      {
+        "priority": 3,
+        "project": "ver1",
+        "variant": "m01",
+        "status": "Phase-0 準備中（before/after YAML は入手済み）。旧解析結果 入手待ち",
+        "phase_0": "準備中（m01-before/after YAML は揃っている → Phase-0 から実施可能）",
+        "old_input": "input/scheduling_requirement_check_analysis_result/（m02 と同一フォルダか別フォルダかは入手時に確認。現状は b01/m01 サブフォルダなし）",
+        "new_input": "input/ver1_m01_PKSB_再解析結果/（入手済み）",
+        "yaml_before": "input/requirement_file/m01-before/（入手済み）",
+        "yaml_after": "input/requirement_file/m01-after/（入手済み）",
+        "note": "YAML が揃っているため Phase-0 のみ先行実施可能。旧解析結果入手後に Phase-A/B を実行する。"
+      },
+      {
+        "priority": 4,
+        "project": "ver1",
+        "variant": "m03",
+        "status": "未着手",
+        "phase_0": "未着手",
+        "note": "m01 完了後に着手。"
+      },
+      {
+        "priority": 5,
+        "project": "ver2",
+        "variant": "TBD",
+        "phase_0": "未着手（入手後に Phase-0 から実施する）",
+        "status": "未着手（m01 完了後に入手予定）",
+        "note": "フォルダ構成・SWC_NODE_MAP は ver1 と同一（OQ-2/3 確認済み）。Phase-0 で新パターン有無を確認する。"
+      },
+      {
+        "priority": 6,
+        "project": "ver2.1",
+        "variant": "TBD",
+        "phase_0": "未着手（入手後に Phase-0 から実施する）",
+        "status": "未着手（ver2 完了後に順次）",
+        "note": "同上"
+      }
+    ]
+  },
+  "file_layout": {
+    "description": "バリアントごとに annotations.json を分離して管理する。",
+    "structure": {
+      "input/": {
+        "requirement_file/": "YAML before/after 群（Phase-0 で使用）",
+        "scheduling_requirement_check_analysis_result/": "旧解析結果（ver1 全バリアント共通）",
+        "ver1_m02_AP_再解析結果/": "新解析結果（ver1 m02）★完了",
+        "ver1_m01_PKSB_再解析結果/": "新解析結果（ver1 m01）入手済み（サブフォルダなし、ファイル直置き）",
+        "ver2_*_AP_再解析結果/": "新解析結果（ver2 系、入手後追加）"
+      },
+      "output/": {
+        "ver1_m02_output_diff.html": "差分 HTML（ver1 m02）★完了",
+        "ver1_m02_output_diff_annotations.json": "差分記録（ver1 m02）★完了",
+        "ver1_m02_cause_summary.csv": "仕訳集計（ver1 m02）★完了",
+        "ver1_m02_cause_detail.csv": "仕訳詳細（ver1 m02）★完了",
+        "ver1_b01_yaml_diff_report.json": "YAML 差分レポート（Phase-0 成果物、before 入手後）",
+        "ver1_m01_yaml_diff_report.json": "YAML 差分レポート（Phase-0 で先行実施可能）",
+        "ver1_m01_*/": "ver1 m01 以降も同じ命名規則で格納",
+        "ver2_*/": "ver2 系も同様"
+      },
+      "design/": {
+        "cause_classifier_spec.json": "cause_classifier.py の仕様書（v0.6.0）",
+        "cause_rules.json": "マッチャー対応表（KB 機械可読層）★完了",
+        "format_change_pattern_log.md": "パターン知識ベース（KB 人間可読層）",
+        "workflow_spec.json": "本ファイル",
+        "yaml_diff_spec.json": "yaml_diff.py の仕様書（Phase-0 担当）",
+        "review_server_spec.json": "review_server.py + review_ui/ の仕様書（Phase-C 担当）"
+      },
+      "scripts/": {
+        "output_diff.py": "差分検出・HTML 生成 ★実装済み",
+        "cause_classifier.py": "自動仕訳（Phase-B 担当）★実装済み（M-01〜M-21）",
+        "yaml_diff.py": "YAML before/after 差分レポート生成 + カバレッジチェック（Phase-0 担当、未実装）",
+        "review_server.py": "FastAPI バックエンド（Phase-C 担当、未実装）",
+        "review_ui/": "Vue 3 + TypeScript フロントエンド（Vite ビルド、未実装）",
+        "matchers/": "マッチャープラグイン格納ディレクトリ。*.py を配置すると cause_classifier.py 起動時に自動ロードされる"
+      }
+    }
+  },
+  "open_questions": [
+    {
+      "id": "OQ-1",
+      "status": "確認済み（2026-05-16）",
+      "question": "ver1 m03 以降の再解析結果はいつ入手できるか？",
+      "answer": "明日（2026-05-18）ver1 b01 と m01 の旧解析結果を入手予定。",
+      "impact": "processing_schedule に反映済み。"
+    },
+    {
+      "id": "OQ-2",
+      "status": "確認済み（2026-05-16）",
+      "question": "ver2 / ver2.1 の旧解析結果フォルダ構成は ver1 と同じか？",
+      "answer": "現時点では ver1 と同じ。",
+      "impact": "cause_classifier.py のルーティングテーブルは ver1 のものをそのまま流用できる。"
+    },
+    {
+      "id": "OQ-3",
+      "status": "確認済み（2026-05-16）",
+      "question": "cause_rules.json の SWC_NODE_MAP は ver2/ver2.1 でも同じ対応関係か？",
+      "answer": "現時点では ver1 と同じ。",
+      "impact": "cause_rules.json を ver1/ver2/ver2.1 で共通の汎用テーブルとして維持できる。"
+    },
+    {
+      "id": "OQ-4",
+      "status": "決定（2026-05-17）",
+      "question": "Phase-0 の YAML diff は専用スクリプト（yaml_diff.py）として実装すべきか、手動確認で十分か？",
+      "answer": "A案を採用。yaml_diff.py を実装し、カバレッジチェックまで自動化する。",
+      "impact": "Phase-0〜B が全自動化され、USER の作業は Phase-C（レビュー UI）に集約される。"
+    },
+    {
+      "id": "OQ-5",
+      "status": "決定（2026-05-17）",
+      "question": "review_ui.py の実装方針は？",
+      "answer": "FastAPI（Python バックエンド）+ Vue 3 TypeScript（Vite、フロントエンド）を採用する。Node.js v24 が既にインストール済みのため追加コストは最小。UX は最良。",
+      "stack": {
+        "backend": "FastAPI + uvicorn（pip install fastapi uvicorn）",
+        "frontend": "Vue 3 + TypeScript + Vite（npm create vite）",
+        "layout": "scripts/review_ui/ にフロントエンドを配置。バックエンドは scripts/review_server.py",
+        "startup": "python3 scripts/review_server.py --annotations output/{basename}_annotations.json [--port 8080]"
+      },
+      "impact": "pip install fastapi uvicorn + npm install（初回のみ）。起動は 1 コマンド。"
+    }
+  ]
+}

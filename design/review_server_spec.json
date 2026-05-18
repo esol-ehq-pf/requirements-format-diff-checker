@@ -1,0 +1,212 @@
+{
+  "tool": "review_server.py",
+  "version": "0.1.2",
+  "purpose": "Phase-B で自動付与された cause タグを USER がブラウザ UI から確認・修正・Unknown 手動入力できるレビューツール。FastAPI バックエンド（review_server.py）とVue 3 + TypeScript フロントエンド（review_ui/）で構成する。テキストエディタで annotations.json を直接編集する作業を排除し、Unknown 行の絞り込み・既知 cause タグの候補提示・新マッチャー登録申請・再分類実行を一画面で完結させる。",
+  "context": {
+    "background": "Phase-B（cause_classifier.py）の自動付与で残った Unknown 行はUSER が手動で cause を確定させる必要がある。annotations.json を直接編集するのはミスが起きやすいため、専用 UI を提供して作業効率と品質を確保する。",
+    "workflow_spec": "design/workflow_spec_v120_draft.json",
+    "phase_in_workflow": "Phase-C（レビュー UI による確認・更新・追加）",
+    "called_from": "CLI（手動起動）→ ブラウザアクセス",
+    "predecessor": "Phase-B（cause_classifier.py 実行済みの annotations.json が存在すること）"
+  },
+  "stack": {
+    "backend": {
+      "language": "Python 3.13+",
+      "framework": "FastAPI + uvicorn",
+      "script": "scripts/review_server.py",
+      "dependencies": [
+        "fastapi",
+        "uvicorn[standard]"
+      ],
+      "note": "標準ライブラリ外パッケージ。実装前に pip install が必要。"
+    },
+    "frontend": {
+      "framework": "Vue 3 + TypeScript",
+      "build_tool": "Vite",
+      "directory": "scripts/review_ui/",
+      "build_output": "scripts/review_ui/dist/",
+      "note": "バックエンドが dist/ を静的ファイルとして配信する。開発時は Vite dev server を使う。"
+    }
+  },
+  "cli": {
+    "command": "python3 scripts/review_server.py --annotations <PATH> [--port <PORT>] [--host <HOST>]",
+    "arguments": {
+      "--annotations": {
+        "type": "path（必須）",
+        "description": "読み書き対象の annotations.json ファイルパス。",
+        "example": "output/ver1_m02_output_diff_annotations.json"
+      },
+      "--port": {
+        "type": "int（省略可）",
+        "default": 8080,
+        "description": "バックエンドの listen ポート。"
+      },
+      "--host": {
+        "type": "str（省略可）",
+        "default": "127.0.0.1",
+        "description": "バックエンドの listen ホスト。LAN 越しアクセスする場合は 0.0.0.0 を指定。"
+      }
+    },
+    "startup_message": "起動後に 'Uvicorn running on http://{host}:{port}' を出力する。USER はブラウザでそのアドレスを開く。",
+    "exit": "Ctrl+C で停止。annotations.json への書き込みはリクエスト単位で完結しているため、途中終了してもデータは壊れない。"
+  },
+  "features": [
+    {
+      "id": "F-01",
+      "feature": "差分一覧表示",
+      "detail": "annotations.json の details[] をファイル・diff_type 別に表形式で表示する。cause バッジ（G-1=緑 / G-2=黄 / G-3=橙 / Unknown=赤）を各行に付与する。"
+    },
+    {
+      "id": "F-02",
+      "feature": "Unknown フィルタ",
+      "detail": "Unknown 行のみ表示するフィルタボタン。確認作業の効率化。全件表示との切り替え。"
+    },
+    {
+      "id": "F-03",
+      "feature": "cause 編集",
+      "detail": "cause フィールドをインライン編集（テキスト入力 or プルダウン）。既知 cause タグの候補一覧を表示して選択可能。候補は cause_classifier.py の MATCHER_REGISTRY から取得する（バックエンド API 経由）。"
+    },
+    {
+      "id": "F-04",
+      "feature": "reason 編集",
+      "detail": "ファイル単位の reason フィールドを編集（テキストエリア）。"
+    },
+    {
+      "id": "F-05",
+      "feature": "hunk_pattern 編集",
+      "detail": "details エントリの hunk_pattern フィールドを編集（テキスト入力）。保存後に output_diff.py のバッジ表示に即時反映される（F-07 の再生成を実行することで反映）。"
+    },
+    {
+      "id": "F-06",
+      "feature": "保存",
+      "detail": "編集内容を annotations.json に書き戻す（Save ボタン or 自動保存）。保存は --annotations で指定したファイルに上書き。"
+    },
+    {
+      "id": "F-07",
+      "feature": "再分類・再生成",
+      "detail": "UI から cause_classifier.py を再実行し、結果（annotations.json の更新）を即時反映するボタン。新マッチャー追加後の確認に使う。再生成: output_diff.py を再実行して HTML を更新するボタン（--annotations 付きで実行）。"
+    },
+    {
+      "id": "F-08",
+      "feature": "新マッチャー候補フォーム",
+      "detail": "Unknown 行に対して『新マッチャー候補』フォームを提示する。diff_type・マッチ条件・cause タグを入力すると cause_classifier_spec.json への追加案を draft JSON として出力する（Phase-C C-3a の入力素材）。",
+      "draft_json_schema": {
+        "description": "F-08 が出力する新マッチャー候補の draft JSON スキーマ（Phase-C C-3a の入力素材）",
+        "fields": {
+          "diff_type": "検出した diff_type 文字列",
+          "match_condition": {
+            "field": "照合フィールド（diff_type / old_val / new_val / file_name）",
+            "operator": "照合演算子（== / contains / startswith / regex）",
+            "value": "照合値"
+          },
+          "cause_tag": "付与する cause タグ文字列（例: 'chksimyml(2-①)'）",
+          "level": "分類レベル（G-1 / G-2 / G-3）",
+          "matcher_id_suggestion": "提案するマッチャーID（例: M-22）",
+          "example_entry": {
+            "file": "差分が発生したファイル名",
+            "diff_type": "実際の diff_type 値",
+            "old_val": "old 側の実際の値",
+            "new_val": "new 側の実際の値"
+          }
+        },
+        "output_destination": "フロントエンドがブラウザ上で JSON を生成して表示する（ダウンロードボタンで保存）。バックエンド API への送信は不要（client-side のみで完結）。ユーザーはこの draft JSON を参照して cause_classifier.py に新マッチャーを実装する。"
+      }
+    }
+  ],
+  "api_endpoints": {
+    "GET /api/annotations": {
+      "description": "annotations.json の内容をそのまま返す。",
+      "response": "annotations.json の JSON オブジェクト"
+    },
+    "GET /api/cause-candidates": {
+      "description": "cause_classifier.py の MATCHER_REGISTRY から cause タグの候補一覧を返す。",
+      "response": "list of str（重複なし）"
+    },
+    "PUT /api/annotations/{file_key}/{detail_index}": {
+      "description": "指定ファイルの details[detail_index] を更新して annotations.json に書き戻す。",
+      "request_body": "更新するフィールド（cause / hunk_pattern）の dict",
+      "response": "更新後のエントリ"
+    },
+    "PUT /api/annotations/{file_key}/reason": {
+      "description": "指定ファイルの reason フィールドを更新して annotations.json に書き戻す。",
+      "request_body": "{reason: str}",
+      "response": "更新後の reason 値"
+    },
+    "POST /api/reclassify": {
+      "description": "cause_classifier.py を再実行する。--annotations は起動時の --annotations 値を使用。--rules は省略（デフォルト: design/cause_rules.json）。--out-prefix は --annotations パスから basename を算出して渡す。完了後に annotations.json を再読み込みして返す。",
+      "response": "更新後の annotations.json 全体"
+    },
+    "POST /api/regenerate-html": {
+      "description": "output_diff.py を --annotations オプション付きで再実行して HTML を再生成する。",
+      "response": "{status: 'ok', html_path: '...'}"
+    },
+    "GET /": {
+      "description": "フロントエンド（review_ui/dist/index.html）を配信する。",
+      "note": "FastAPI の StaticFiles マウントで scripts/review_ui/dist/ を '/' にマウントする。"
+    }
+  },
+  "frontend": {
+    "directory": "scripts/review_ui/",
+    "entry": "scripts/review_ui/src/main.ts",
+    "build": "cd scripts/review_ui && npm run build → dist/ 以下にバンドル",
+    "dev": "cd scripts/review_ui && npm run dev → http://localhost:5173（開発時のみ）",
+    "components": [
+      "AnnotationTable.vue: 差分一覧テーブル（F-01/F-02/F-03/F-04/F-05/F-06）",
+      "CauseEditor.vue: cause インライン編集コンポーネント",
+      "MatcherCandidateForm.vue: 新マッチャー候補フォーム（F-08）",
+      "ReclassifyButton.vue: 再分類・再生成ボタン（F-07）"
+    ],
+    "state_management": "Vue 3 Composition API + reactive()。Pinia は使わない（シンプルに保つ）。",
+    "http_client": "fetch API（標準ブラウザ機能）。axios は使わない。"
+  },
+  "persistence": {
+    "data_file": "annotations.json（--annotations で指定したファイル）",
+    "write_strategy": "リクエスト単位で上書き保存。ブラウザを閉じても保持される。",
+    "concurrency_note": "同時接続は想定しない（1ユーザー・1ブラウザウィンドウ前提）。",
+    "backup_note": "review_server.py は annotations.json を上書きするため、作業前に手動バックアップを推奨する。将来版では自動バックアップ（.bak）を検討する。"
+  },
+  "workflow_position": {
+    "phase": "Phase-C",
+    "trigger": "Phase-B（cause_classifier.py）完了後、USER が Unknown 行を確認するとき",
+    "steps_covered": [
+      "C-1",
+      "C-2",
+      "C-3a（新マッチャー候補フォーム）"
+    ],
+    "predecessor": "cause_classifier.py（Phase-B）の実行が完了し annotations.json が存在すること",
+    "feeds_into": [
+      "C-3b 以降: format_change_pattern_log.md / cause_rules.json への手動追記",
+      "C-4: ツール挙動調査"
+    ],
+    "fallback_without_ui": "review_server.py 未実装時は cause_detail.csv を直接参照して手動確認し、annotations.json をテキストエディタで直接編集する。"
+  },
+  "implementation_notes": {
+    "implementation_status": "未実装（2026-05-17 現在）",
+    "priority": "b01/m01 の実データ処理（Phase-A/B）完了後に着手予定",
+    "frontend_scaffold": "npm create vue@latest review_ui -- --typescript で初期化を推奨",
+    "package_install": "pip install fastapi 'uvicorn[standard]' が必要"
+  },
+  "known_issues_and_notes": [
+    {
+      "id": "N-01",
+      "note": "review_server.py および review_ui/ は未実装。本 spec が実装の基礎仕様となる。"
+    },
+    {
+      "id": "N-02",
+      "note": "FastAPI / uvicorn は標準ライブラリ外。requirements.txt または pyproject.toml への追記が必要。"
+    },
+    {
+      "id": "N-03",
+      "note": "F-07（再分類・再生成）は cause_classifier.py / output_diff.py を subprocess で実行する。実行パスは review_server.py の起動ディレクトリ（format-change/）基準とする。"
+    },
+    {
+      "id": "N-04",
+      "note": "フロントエンドのビルド（npm run build）が必要。dist/ が存在しない場合は'/' アクセスで 404 になる。開発時は Vite dev server を使い、API を localhost:8080 にプロキシする。"
+    },
+    {
+      "id": "N-05",
+      "note": "PUT /api/annotations/{file_key}/{detail_index} の file_key は annotations.json のトップレベルキー（ファイル名文字列）と一致する必要がある。URL エンコードに注意。"
+    }
+  ],
+  "_version_note": "0.1.1: セルフレビュー NG 修正（2026-05-17）。features.F-08 に draft_json_schema を追加。 | v0.1.2: POST /api/reclassify の --rules / --out-prefix 扱いを明記。"
+}

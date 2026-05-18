@@ -1,9 +1,9 @@
 {
   "tool": "output_diff.py",
-  "version": "0.5.0",
+  "version": "0.7.0",
   "purpose": "2つの OUTPUT フォルダを再帰的に比較し、WinMerge のフォルダ比較結果に相当する一覧を HTML または CSV で出力する。アノテーション JSON と連携して差分理由をバッジ表示する。",
   "context": {
-    "background": "ver1/ver2/ver2.1 の各バリアントに対して、旧解析結果フォルダと新解析結果フォルダを比較し、どのファイルが異なるかを一覧で把握する。",
+    "background": "ver1/ver2/ver2.1 の各バリアントに対して、旧解析結果フォルダと新解析結果フォルダを比較し、どのファイルが異なるかを一覧で把握する。本ツールは4フェーズワークフロー（Phase-0/A/B/C）の Phase-A（Output 差分検出）を担い、生成した annotations.json を Phase-B の cause_classifier.py に引き渡す。",
     "reference": "WinMerge 2.16 Manual - Comparing and merging folders (https://manual.winmerge.org/en/Compare_dirs)"
   },
   "requirements": {
@@ -41,14 +41,16 @@
       },
       {
         "step": 2,
-        "tool": "annotate_diff.py（新設予定）",
-        "command": "python3 scripts/annotate_diff.py --old OLD --new NEW --annotations output/foo_annotations.json",
-        "responsibility": "差分の理由付けを行う（自動＋手動の2段階）",
-        "auto_part": "既知パターンをルールベース（annotate_rules.json）で検索し details: に書き込む",
-        "manual_part": "_annotations.json の reason: フィールドをユーザーが直接テキストエディタで記入する",
+        "tool": "cause_classifier.py（実装済み）",
+        "command": "python3 scripts/cause_classifier.py --annotations output/{basename}_annotations.json --rules design/cause_rules.json --out-prefix output/{basename}",
+        "responsibility": "annotations.json の details[] に cause タグを自動付与し、summary/detail CSV を出力する",
+        "auto_part": "ROUTING_TABLE（ファイル名 glob）と MATCHER_REGISTRY（M-01〜M-21）でパターンマッチング。G-1 優先・G-2 フォールバック",
         "outputs": [
-          "output/foo_annotations.json（details: 補完済み。reason: は手動記入待ち）"
-        ]
+          "output/{basename}_annotations.json（cause タグ自動補完済み）",
+          "output/{basename}_cause_summary.csv（cause タグ別件数集計）",
+          "output/{basename}_cause_detail.csv（全詳細レコード。Unknown 追跡用）"
+        ],
+        "note": "workflow Step 2（旧設計: annotate_diff.py）の役割を担う。scripts/matchers/ にプラグイン .py を追加することで cause_classifier.py 本体を修正せずに新規マッチャーを追加できる（プラグインアーキテクチャ）。"
       },
       {
         "step": 3,
@@ -61,13 +63,13 @@
       },
       {
         "step": 4,
-        "tool": "extract_and_write_diff.py（整理後）",
-        "command": "python3 scripts/extract_and_write_diff.py --annotations output/foo_annotations.json --xlsx FILE.xlsx",
-        "responsibility": "_annotations.json の内容を Excel / CSV に転記する",
+        "tool": "手動 or review_server.py（未実装）",
+        "command": "python3 scripts/review_server.py --annotations output/{basename}_annotations.json（未実装）",
+        "responsibility": "annotations.json の cause を USER が確認・修正し、Unknown を手動記入する（Phase-C）",
         "outputs": [
-          "Excel『Output差分』シート",
-          "または CSV ファイル"
-        ]
+          "output/{basename}_annotations.json（cause 手動確認済み）"
+        ],
+        "note": "review_server.py 未実装段階では cause_detail.csv で Unknown 行を特定し annotations.json を直接編集する。"
       }
     ]
   },
@@ -291,7 +293,7 @@
   },
   "annotation_json": {
     "filename": "{html名}_annotations.json（出力 HTML と同じディレクトリ）",
-    "description": "差分ファイルごとの理由付け情報を保持する JSON ファイル。output_diff.py がスケルトンを生成し、annotate_diff.py が details: を補完する。reason: はユーザーが手動記入する。",
+    "description": "差分ファイルごとの理由付け情報を保持する JSON ファイル。output_diff.py がスケルトンを生成し、cause_classifier.py（Phase-B B-1）が details[].cause を自動補完する。reason フィールドはユーザーが手動記入する（ツールは変更しない）。",
     "schema": {
       "_comment": "文字列。ファイルの説明（自動生成）",
       "entries": {
@@ -299,7 +301,7 @@
         "value_schema": {
           "folder": "フォルダ名（ルート直下は空文字）",
           "file": "ファイル名",
-          "reason": "ユーザーが手動記入する差分理由。output_diff.py は上書きしない。annotate_diff.py も上書きしない。",
+          "reason": "ユーザーが手動記入する差分理由。output_diff.py は上書きしない。cause_classifier.py も上書きしない。",
           "details": [
             {
               "diff_type": "差分の種類（例: pf_1ms_base行の消失）",
@@ -345,7 +347,7 @@
   },
   "planned_tools": {
     "annotate_diff.py": {
-      "status": "設計中（未実装）",
+      "status": "実装済み（cause_classifier.py として具体化）",
       "purpose": "差分の理由付けを行う専用ツール。output_diff.py（差分有無の検出）と extract_and_write_diff.py（Excel/CSV 転記）の間に位置する。",
       "requirements": {
         "RQ-A1": "旧・新フォルダと _annotations.json を入力として受け取ること",
@@ -369,7 +371,8 @@
           "cause": "推定原因の文言（既知の場合。未特定の場合は空文字）"
         },
         "note": "新バリアント（ver2/ver2.1）で未知パターンが現れた場合は JSON にルールを追記するだけで対応できる"
-      }
+      },
+      "implementation_note": "当初 annotate_diff.py という仮称で設計されていたが、cause_classifier.py として実装完了（M-01〜M-21）。scripts/matchers/ ディレクトリへのプラグイン追加で本体修正不要に拡張可能。design/cause_classifier_spec.json（v0.7.0）参照。"
     },
     "extract_and_write_diff.py（整理後）": {
       "status": "設計中（現状は理由付けロジックを内包している）",
@@ -378,6 +381,12 @@
         "RQ-E2": "入力を _annotations.json から読む方式に変更すること（現在の --old/--new による直接読み込みは不要にする）"
       },
       "migration_timing": "次のバリアント（ver1 b01 等）が届いて新パターン追加が発生したタイミングで実施する"
+    },
+    "cause_classifier.py": {
+      "status": "実装済み",
+      "spec": "design/cause_classifier_spec.json",
+      "purpose": "annotations.json の details[] に cause タグを自動付与し summary/detail CSV を出力する",
+      "role_in_workflow": "Phase-B B-1（annotate_diff.py の具体的実装）"
     }
   },
   "notes": [
@@ -387,5 +396,20 @@
     "HTML 出力・_diffs/ フォルダ・_annotations.json はセットで保管・共有すること",
     "_annotations.json の folder キーは output_diff.py 側は実際のパス（temp/）、extract_and_write_diff.py 側は Excel 表記（tmp）で異なる点に注意（write_annotations_json 内の folder_map で変換）",
     "画像ファイルのリネーム（内容同一・ファイル名変更）は Different でなく Left only + Right only として検出される（スコープ外）"
-  ]
+  ],
+  "workflow_position": {
+    "description": "4フェーズワークフロー（Phase-0/A/B/C）の Phase-A を担う。",
+    "workflow_spec_ref": "design/workflow_spec_v120_draft.json",
+    "phase": "A — Output 差分検出",
+    "step": "A-1（output_diff.py による差分 HTML + annotations スケルトン生成）",
+    "also_used_in": "Phase-B B-2（cause バッジ付き HTML 再生成。B-1 完了後に同コマンドを再実行する）",
+    "complete_condition": "output/{basename}.html と output/{basename}_annotations.json が生成されていること",
+    "actor": "USER（--old/--new パスを指定してコマンドを実行する）",
+    "automation_note": "output_diff.py は TOOL スクリプトだが、--old/--new パスの指定が必要なため USER がコマンドラインで実行する（Phase-A は半自動）。",
+    "context": {
+      "before_this_tool": "Phase-0（yaml_diff.py による YAML before/after 差分確認）が完了していること（または before YAML 未入手でスキップ）",
+      "after_this_tool": "Phase-B B-1: cause_classifier.py が annotations.json に cause タグを自動付与する"
+    }
+  },
+  "_version_note": "0.7.0: annotation_json.reason の annotate_diff.py → cause_classifier.py に修正。workflow.steps[1].note の旧設計表現を改善。context.background に Phase-A 位置づけを追記。"
 }

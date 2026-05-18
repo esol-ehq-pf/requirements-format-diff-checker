@@ -1,0 +1,347 @@
+{
+  "title": "フォーマット変更差分整理ワークフロー",
+  "version": "1.1.0",
+  "purpose": "過去プロジェクト（ver1/ver2/ver2.1）の要件ファイルを ver3 フォーマットへ変換する活動において、差分を機械的に仕訳し、手動確認対象を最小化する。さらに確認済みのパターン知識を次のプロジェクトに再利用可能な形で管理する。",
+
+  "actors": {
+    "USER": "担当者（プロジェクト知識保有者）。変化点の正誤判断・Unknown の原因調査・パターン登録の承認を行う。",
+    "TOOL": "cause_classifier.py / output_diff.py 等の自動化スクリプト群。",
+    "KB": "知識ベース（cause_rules.json / format_change_pattern_log.md）。過去に確認済みのパターンを蓄積する。"
+  },
+
+  "data_assets": {
+    "input_old": {
+      "path": "input/{project}_{variant}_旧解析結果/",
+      "description": "旧フォーマット要件ファイルで解析した過去の結果フォルダ",
+      "owner": "USER（顧客から受領）",
+      "lifetime": "read-only。変更しない。"
+    },
+    "input_new": {
+      "path": "input/{project}_{variant}_再解析結果/",
+      "description": "ver3 フォーマット要件ファイルで再解析したフォルダ",
+      "owner": "USER（顧客から受領 or 自身で実行）",
+      "lifetime": "read-only。変更しない。"
+    },
+    "annotations_json": {
+      "path": "output/{basename}_annotations.json",
+      "description": "ファイル単位の差分一覧 + cause タグの記録ファイル。ツールと USER が協調して更新する。",
+      "schema": {
+        "entries": {
+          "{file_name}": {
+            "folder": "相対フォルダパス",
+            "file": "ファイル名",
+            "reason": "USER が記入する差分の総括コメント（1〜2行）",
+            "details": [
+              {
+                "diff_type": "変化の種別（NodeNameの変化 等）",
+                "old_val": "旧値または変化の説明",
+                "new_val": "新値または変化の説明",
+                "cause": "TOOL が自動付与 or USER が手動記入する原因タグ"
+              }
+            ]
+          }
+        }
+      },
+      "update_rules": [
+        "cause が空欄のエントリのみ TOOL が上書きする（手動記入を保護）",
+        "reason フィールドは TOOL が変更しない（USER 専用）",
+        "新しい diff_type が出現した場合、cause='' のままにして USER に通知する"
+      ]
+    },
+    "cause_rules_json": {
+      "path": "design/cause_rules.json",
+      "description": "マッチャーが参照する対応表。KB の機械可読部分。",
+      "schema": {
+        "SWC_NODE_MAP": {"AhbAhs": "Main", "LgtCtl": "LightingControl"},
+        "BUDGET_ALIAS_MAP": {"AhbAhs": "Main", "LgtCtl": "LightingControl", "TJSupport": "TrafficJamSupport"},
+        "PROJECT_VARIANTS": ["b01", "m01", "m02", "m03"],
+        "KNOWN_DIFF_TYPES": ["NodeNameの変化", "pf_1ms_base行の消失", "...（既知の diff_type 全種）"]
+      },
+      "owner": "USER が承認 → TOOL が参照。直接編集は USER のみ。"
+    },
+    "format_change_pattern_log": {
+      "path": "design/format_change_pattern_log.md",
+      "description": "パターンの発見経緯・実データ例・変換式を人間可読形式で記録した知識ベース。cause_rules.json の設計根拠。",
+      "owner": "USER が最終承認。TOOL は新パターン候補をドラフトとして追記できる。"
+    },
+    "cause_summary_csv": {
+      "path": "output/{basename}_cause_summary.csv",
+      "description": "cause タグ別件数集計。顧客への報告資料の原票。",
+      "owner": "TOOL が生成。USER がレビューして提出。"
+    },
+    "cause_detail_csv": {
+      "path": "output/{basename}_cause_detail.csv",
+      "description": "details エントリ単位の全レコード。Unknown の追跡・パターン発見に使う。",
+      "owner": "TOOL が生成。USER が Unknown 行を調査してパターンに昇格させる。"
+    },
+    "output_html": {
+      "path": "output/{basename}_output_diff.html",
+      "description": "ファイル単位の差分一覧 HTML。cause バッジ付きで差分を視覚的に確認できる。",
+      "owner": "TOOL が生成。USER がレビューに使用。"
+    }
+  },
+
+  "workflow": {
+    "overview": "3フェーズ構成。Phase-A（差分検出）→ Phase-B（自動仕訳）→ Phase-C（手動確認・KB 更新）",
+    "phases": [
+      {
+        "phase": "A",
+        "name": "差分検出",
+        "trigger": "USER が新しい再解析結果を受け取ったとき",
+        "steps": [
+          {
+            "step": "A-1",
+            "actor": "USER",
+            "action": "input_old / input_new のパスを確認し、コマンドを実行する",
+            "command": "python3 scripts/output_diff.py --old input/OLD --new input/NEW --out output/{basename}.html",
+            "output": [
+              "output/{basename}.html（ファイル単位の差分一覧）",
+              "output/{basename}_annotations.json（cause='' のスケルトン）"
+            ],
+            "note": "annotations.json が既存の場合は新規エントリのみ追加され、既存の cause/reason は保持される"
+          }
+        ]
+      },
+      {
+        "phase": "B",
+        "name": "自動仕訳",
+        "trigger": "Phase-A 完了直後に続けて実行",
+        "steps": [
+          {
+            "step": "B-1",
+            "actor": "TOOL",
+            "action": "annotations.json の cause='' のエントリに対してマッチャーを適用し cause タグを自動付与する",
+            "command": "python3 scripts/cause_classifier.py --annotations output/{basename}_annotations.json --rules design/cause_rules.json --out-prefix output/{basename}",
+            "output": [
+              "output/{basename}_annotations.json（cause タグ補完済み）",
+              "output/{basename}_cause_summary.csv",
+              "output/{basename}_cause_detail.csv"
+            ]
+          },
+          {
+            "step": "B-2",
+            "actor": "TOOL",
+            "action": "annotations.json を読み込んでバッジ付き HTML を再生成する",
+            "command": "python3 scripts/output_diff.py --old input/OLD --new input/NEW --out output/{basename}.html",
+            "output": ["output/{basename}.html（cause バッジ付き）"]
+          }
+        ]
+      },
+      {
+        "phase": "C",
+        "name": "手動確認・KB 更新",
+        "trigger": "Phase-B 完了後に USER が実施",
+        "steps": [
+          {
+            "step": "C-1",
+            "actor": "USER",
+            "action": "cause_detail.csv を開き Unknown 行を確認する",
+            "input": "output/{basename}_cause_detail.csv（Unknown 行のみフィルタ）",
+            "decision": [
+              "既知パターンへの当てはめが可能 → C-2 へ",
+              "新パターン発見 → C-3 へ",
+              "調査が必要 → C-4 へ"
+            ]
+          },
+          {
+            "step": "C-2",
+            "actor": "USER",
+            "action": "annotations.json の該当 cause フィールドを直接テキストエディタで記入する",
+            "output": ["output/{basename}_annotations.json（cause 手動記入）"],
+            "then": "B-2 を再実行してバッジ付き HTML を更新する"
+          },
+          {
+            "step": "C-3",
+            "actor": "USER + TOOL",
+            "action": "新パターンを KB に登録する",
+            "substeps": [
+              "C-3a: format_change_pattern_log.md に新パターンを追記する（実データ例・変換式・cause タグ）",
+              "C-3b: cause_rules.json に必要な対応表エントリを追加する（SWC_NODE_MAP 等）",
+              "C-3c: cause_classifier_spec.json に新マッチャー（M-N）を追加する",
+              "C-3d: cause_classifier.py に新マッチャーを実装し pytest を実行する",
+              "C-3e: git commit する"
+            ],
+            "note": "C-3 完了後に B-1 から再実行すると、新パターンが自動判定されるようになる"
+          },
+          {
+            "step": "C-4",
+            "actor": "USER",
+            "action": "ツール挙動または要件ファイルの変更を調査し原因を特定する",
+            "note": "パターン9/28 のような「ツール起因（要確認）」は調査結果が出るまで cause='ツール起因(要確認)' のままにする"
+          }
+        ]
+      }
+    ]
+  },
+
+  "knowledge_base_management": {
+    "purpose": "確認済みのパターン知識を次のプロジェクト（ver1 m03以降、ver2、ver2.1）に再利用する。",
+    "layers": {
+      "L1_human_readable": {
+        "file": "design/format_change_pattern_log.md",
+        "role": "パターンの発見経緯・実データ例・変換式・注意事項を人間が読める形式で記録",
+        "update_timing": "新パターン発見時（C-3a）",
+        "scope": "プロジェクト横断。ver1/ver2/ver2.1 共通の知識を蓄積する。"
+      },
+      "L2_machine_readable": {
+        "file": "design/cause_rules.json",
+        "role": "マッチャーが参照する対応表・設定値。L1 の機械可読エクスポート。",
+        "update_timing": "新パターン発見時（C-3b）",
+        "scope": "ツールバージョン管理。SWC_NODE_MAP が変わったときはバージョン番号を更新する。"
+      },
+      "L3_executable": {
+        "file": "scripts/cause_classifier.py",
+        "role": "マッチャーロジックの実装。L1/L2 を参照して自動判定を実行する。",
+        "update_timing": "新マッチャー追加時（C-3d）",
+        "scope": "プロジェクト横断で再利用可能。ファイル名ルーティングテーブルのみプロジェクト固有。"
+      }
+    },
+    "reuse_strategy": {
+      "new_project_flow": [
+        "1. cause_rules.json の SWC_NODE_MAP / BUDGET_ALIAS_MAP が新バリアントで有効か確認する（OQ-2/3 確認済み: 現時点では共通）",
+        "2. ルーティングテーブルにバリアント固有のファイル名差異がないか確認する（現時点では ver1 m01/m02/... は同一構成と確認済み）",
+        "3. Phase-A/B を実行する",
+        "4. Unknown の件数が多い場合は新パターンを C-3 で登録し、ツールを育てる"
+      ],
+      "versioning": "cause_rules.json にプロジェクト識別子（'ver1_m02' 等）を持たせない。汎用テーブルとして維持し、プロジェクト固有の情報は annotations.json に持つ。",
+      "confirmed_commonality": {
+        "folder_structure": "ver2/ver2.1 も ver1 と同じフォルダ構成（OQ-2 確認済み 2026-05-16）",
+        "swc_node_map": "ver2/ver2.1 も ver1 と同じ SWC↔Node 対応関係（OQ-3 確認済み 2026-05-16）。変化が判明した場合は cause_rules.json に project_overrides セクションを追加する。"
+      }
+    }
+  },
+
+  "change_information_management": {
+    "purpose": "変化点情報の発生源・記録場所・管理責任者を明確にする。",
+    "sources": [
+      {
+        "source": "自動検出（output_diff.py）",
+        "what": "ファイル単位の diff_type・old_val・new_val",
+        "where": "annotations.json の details[]",
+        "managed_by": "TOOL"
+      },
+      {
+        "source": "自動仕訳（cause_classifier.py）",
+        "what": "cause タグ（G-1/G-2 判定結果）",
+        "where": "annotations.json の details[].cause",
+        "managed_by": "TOOL（G-1/G-2）、USER（手動確認・修正）"
+      },
+      {
+        "source": "手動記入（USER）",
+        "what": "差分の総括コメント・Unknown の原因・ツール起因の調査結果",
+        "where": "annotations.json の reason フィールド",
+        "managed_by": "USER専用。TOOL は変更しない。"
+      },
+      {
+        "source": "過去事例（format_change_pattern_log.md）",
+        "what": "パターン番号・変換式・実データ例・パターン間の連鎖関係",
+        "where": "design/format_change_pattern_log.md",
+        "managed_by": "USER が最終承認。TOOL は候補ドラフトを提示できる。"
+      }
+    ],
+    "single_source_of_truth": "annotations.json が「このバリアントの差分の正として何が変わったか」の唯一の記録。cause_summary/detail CSV は annotations.json から自動生成される派生物。"
+  },
+
+  "reporting": {
+    "purpose": "顧客（依頼元）への報告資料の生成。",
+    "steps": [
+      "cause_summary.csv を Excel に貼り付け、cause タグ別に件数・影響ファイルを整理する",
+      "annotations.json の reason フィールドを差分説明欄として貼り付ける",
+      "output_diff.html を添付資料として提出する（バッジで cause が視覚的に分かる）"
+    ],
+    "note": "報告書の『Output差分』シートへの記入は annotations.json → cause_summary.csv の流れで機械的に行える。"
+  },
+
+  "processing_schedule": {
+    "description": "バリアントの処理予定順序。OQ-1 回答に基づき更新（2026-05-16）",
+    "order": [
+      {
+        "priority": 1,
+        "project": "ver1",
+        "variant": "m02",
+        "status": "完了（2026-05-16）",
+        "old_input": "input/scheduling_requirement_check_analysis_result/",
+        "new_input": "input/ver1_m02_AP_再解析結果/output/",
+        "note": "基準バリアント。パターン1〜33を確認済み。"
+      },
+      {
+        "priority": 2,
+        "project": "ver1",
+        "variant": "m01",
+        "status": "来週入手予定",
+        "old_input": "input/scheduling_requirement_check_analysis_result/（m01 サブフォルダ）",
+        "new_input": "input/ver1_m01_AP_再解析結果/output/（入手後確定）",
+        "note": "m02 と同一フォルダ構成・ルールを流用。Unknown が少ないことを期待。"
+      },
+      {
+        "priority": 3,
+        "project": "ver2",
+        "variant": "TBD",
+        "status": "m01 完了後に入手予定",
+        "note": "フォルダ構成・SWC_NODE_MAP は ver1 と同一（OQ-2/3 確認済み）。差分パターンが増えた場合は C-3 でパターン追加する。"
+      },
+      {
+        "priority": 4,
+        "project": "ver2.1",
+        "variant": "TBD",
+        "status": "ver2 完了後に順次",
+        "note": "同上"
+      }
+    ]
+  },
+
+  "file_layout": {
+    "description": "バリアントごとに annotations.json を分離して管理する。",
+    "structure": {
+      "input/": {
+        "scheduling_requirement_check_analysis_result/": "旧解析結果（ver1 全バリアント共通）",
+        "ver1_m02_AP_再解析結果/": "新解析結果（ver1 m02）★完了",
+        "ver1_m01_AP_再解析結果/": "新解析結果（ver1 m01）来週入手予定",
+        "ver2_*_AP_再解析結果/": "新解析結果（ver2 系、入手後追加）",
+        "フォーマット変更後/": "ver3 フォーマット要件ファイル群（リファレンス）"
+      },
+      "output/": {
+        "ver1_m02_output_diff.html": "差分 HTML（ver1 m02）★完了",
+        "ver1_m02_output_diff_annotations.json": "差分記録（ver1 m02）★完了",
+        "ver1_m02_cause_summary.csv": "仕訳集計（ver1 m02）※ cause_classifier.py 実装後に生成",
+        "ver1_m02_cause_detail.csv": "仕訳詳細（ver1 m02）※ cause_classifier.py 実装後に生成",
+        "ver1_m01_*/": "ver1 m01 以降も同じ命名規則で格納",
+        "ver2_*/": "ver2 系も同様"
+      },
+      "design/": {
+        "cause_classifier_spec.json": "cause_classifier.py の仕様書",
+        "cause_rules.json": "マッチャー対応表（KB 機械可読層）※ 未作成",
+        "format_change_pattern_log.md": "パターン知識ベース（KB 人間可読層）★完了",
+        "workflow_spec.json": "本ファイル"
+      },
+      "scripts/": {
+        "output_diff.py": "差分検出・HTML 生成 ★実装済み",
+        "cause_classifier.py": "自動仕訳（Phase-B 担当）※ 未実装"
+      }
+    }
+  },
+
+  "open_questions": [
+    {
+      "id": "OQ-1",
+      "status": "確認済み（2026-05-16）",
+      "question": "ver1 m03 以降の再解析結果はいつ入手できるか？",
+      "answer": "来週 ver1 m01 を入手予定。その後 ver2 系を順次入手。",
+      "impact": "processing_schedule に反映済み。m01 入手後に Phase-A/B を実行し、Unknown が増えた場合は C-3 でパターン追加する。"
+    },
+    {
+      "id": "OQ-2",
+      "status": "確認済み（2026-05-16）",
+      "question": "ver2 / ver2.1 の旧解析結果フォルダ構成は ver1 と同じか？",
+      "answer": "現時点では ver1 と同じ。",
+      "impact": "cause_classifier.py のルーティングテーブルは ver1 のものをそのまま流用できる。フォルダ構成に差異が判明した時点で routing_table を追加する。"
+    },
+    {
+      "id": "OQ-3",
+      "status": "確認済み（2026-05-16）",
+      "question": "cause_rules.json の SWC_NODE_MAP は ver2/ver2.1 でも同じ対応関係か？",
+      "answer": "現時点では ver1 と同じ。",
+      "impact": "cause_rules.json を ver1/ver2/ver2.1 で共通の汎用テーブルとして維持できる。差異が判明した場合は project_overrides セクションを追加する（ファイルを分けない）。"
+    }
+  ]
+}
