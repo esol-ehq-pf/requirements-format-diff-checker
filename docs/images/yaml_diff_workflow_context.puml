@@ -1,0 +1,36 @@
+@startuml yaml_diff_workflow_context
+skinparam defaultFontName "Noto Sans JP"
+skinparam componentStyle rectangle
+skinparam ArrowColor #555555
+skinparam ComponentBorderColor #555555
+skinparam NoteBorderColor #AAAAAA
+skinparam NoteBackgroundColor #FFFDE7
+
+rectangle "4フェーズワークフロー" {
+
+  component "**Phase-0**\nyaml_diff.py\nYAML 差分検出" as P0 #AED6F1
+  component "**Phase-A**\noutput_diff.py\nOutput 差分検出" as PA #A9DFBF
+  component "**Phase-B**\ncause_classifier.py\n原因自動分類" as PB #F9E79F
+  component "**Phase-C**\n手動レビュー /\n新マッチャー追加" as PC #F1948A
+
+}
+
+P0 -right-> PA : カバレッジ確認後\nPhase-A へ
+PA -right-> PB : annotations.json
+PB -right-> PC : cause_detail.csv\n(Unknown 行)
+PC -up-> PA : C-3 完了後\nPhase-A 再実行
+
+P0 -[dashed]down-> PC : 未カバー diff_type 発覚時\nC-3 先行実施
+
+note bottom of P0
+  before YAML が未入手の場合は
+  Phase-0 をスキップして
+  Phase-A へ直接進む
+end note
+
+note top of PA
+  output_diff.py: OUTPUT フォルダ比較
+  → annotations.json スケルトン生成
+end note
+
+@enduml

@@ -1,0 +1,61 @@
+@startuml yaml_diff_flow
+skinparam defaultFontName "Noto Sans JP"
+skinparam ArrowColor #555555
+skinparam ActivityBorderColor #555555
+skinparam ActivityBackgroundColor #F8F8F8
+
+start
+
+:CLI 引数解析\n(argparse);
+
+if (--before/--after/--out\n未指定?) then (yes)
+  #FFB3B3:exit 2\n（引数エラー）;
+  stop
+endif
+
+if (--before または --after\nが存在しない?) then (yes)
+  #FFB3B3:exit 3\n（ディレクトリ不在）;
+  stop
+endif
+
+if (--dry-run 指定?) then (yes)
+  :YAML 差分計算\n（ファイル書き出しなし）;
+  :stdout に\ndiff_types: N 種, entries: M 件\nを出力;
+  #B3FFB3:exit 0\n（dry-run 完了）;
+  stop
+endif
+
+:--out 親ディレクトリを\n自動作成\n(mkdir -p);
+
+:ファイルペアリング\n.slot.yaml / _budget.yaml\nをサフィックスで対応付け;
+
+if (YAML パースエラー?) then (yes)
+  #FFB3B3:exit 3\n（YAML 読み込みエラー）;
+  stop
+endif
+
+:slot.yaml 差分抽出\ndiff_slot_yaml()\n─ エントリ追加/削除\n─ タイムスロット変化\n─ キー追加/削除（YAML）\n─ 値変化（YAML）;
+
+:budget.yaml 差分抽出\ndiff_budget_yaml()\n─ エントリ追加/削除\n─ BudgetGroup変化;
+
+:ファイルレベル差分付与\n─ ファイル追加（YAML）\n─ ファイル消失（YAML）;
+
+:yaml_diff_report.json 生成\n(write_report());
+
+if (--check-coverage\n指定?) then (yes)
+  :cause_classifier.py を\ndynamic import + inspect\n既知 diff_type を収集;
+
+  if (未カバー diff_type あり?) then (yes)
+    :stdout に未カバー\ndiff_type を 1 行 1 件出力;
+    #FFB3B3:exit 1\n（未カバーあり）;
+    stop
+  else (no)
+    #B3FFB3:exit 0\n（全カバー済み）;
+    stop
+  endif
+else (no)
+  #B3FFB3:exit 0\n（正常完了）;
+  stop
+endif
+
+@enduml

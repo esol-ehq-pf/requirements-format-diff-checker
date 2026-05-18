@@ -123,10 +123,11 @@ scripts/yaml_diff.py
 ├── _collect_known_diff_types(spec_path: Path) -> set[str]  # 方式B
 │
 └── main()
-    └── argparse（--before, --after, --out, --check-coverage）
+    └── argparse（--before, --after, --out, --check-coverage, --dry-run）
     └── pair_yaml_files → diff_slot_yaml / diff_budget_yaml
     └── JSON レポート書き出し
     └── --check-coverage 指定時: _collect_known_diff_types → 差集合計算 → stdout 出力
+    └── --dry-run 指定時: write_report() をスキップし、diff_types と entries 件数を stdout 出力して exit=0
     └── 終了コード: 0/1/2/3
 ```
 
@@ -189,7 +190,7 @@ scripts/yaml_diff.py
 
 | コード | 条件 |
 |--------|------|
-| 0 | 正常完了 |
+| 0 | 正常完了（--dry-run 指定時も 0） |
 | 1 | `--check-coverage` で未カバー diff_type あり |
 | 2 | 引数エラー（`--before`/`--after`/`--out` 未指定） |
 | 3 | 入力ファイル読み込みエラー（ディレクトリ不在・YAML パースエラー） |
@@ -208,14 +209,16 @@ scripts/yaml_diff.py
 1. 定数ブロック（`SLOT_SUFFIX`, `BUDGET_SUFFIX`）
 2. `DiffEntry` dataclass（frozen=False）
 3. `_val_to_str(v) -> str`
-4. `main()` — argparse（`--before`/`--after`/`--out`/`--check-coverage`）
+4. `main()` — argparse（`--before`/`--after`/`--out`/`--check-coverage`/`--dry-run`）
    - `--before`/`--after`/`--out` 未指定 → `SystemExit(2)`（argparse `required=True`）
    - **実行順序（副作用を含む）**:
      1. argparse 引数検証 → exit=2
      2. `--before`/`--after` パス存在チェック → exit=3
      3. `--out` の親ディレクトリ自動作成（`out_path.parent.mkdir(parents=True, exist_ok=True)`）
+        ※ **`--dry-run` 指定時はスキップ**（mkdir を実行しない）
      4. YAML 読み込み・差分計算（パースエラー → exit=3）
-     5. `write_report()`（JSON 書き出し）→ exit=0 or exit=1
+     5. `--dry-run` **未指定時**: `write_report()`（JSON 書き出し）→ exit=0 or exit=1
+        `--dry-run` **指定時**: stdout に `diff_types: N 種, entries: M 件` を出力して exit=0
    - 副作用注意: 手順 4 で YAML パースエラー時、手順 3 の mkdir により作成した親ディレクトリが残る。
      JSON ファイル未生成のまま空ディレクトリが残るのは許容動作（D-6 参照）
 5. `diff_slot_yaml()`/`diff_budget_yaml()`/`pair_yaml_files()` はスタブ（空リスト返却）
@@ -226,6 +229,8 @@ scripts/yaml_diff.py
 - TC-12b: `--after` に存在しないパス → `returncode == 3`
 - TC-12c: `--before` に存在しないパス → `returncode == 3`（R-2: --before/--after 両方向を対称にテスト）
 - TC-11: `--out` の親ディレクトリが存在しなくても出力ファイルが生成されること（exit=0）
+- TC-17: `--dry-run` 指定時 → `--out` ファイルが生成されないこと、stdout に件数が出力されること、exit=0
+  - 期待: `returncode == 0` かつ `--out` ファイルが**存在しない**こと かつ stdout に `'diff_types:'` が含まれること
 
 **コミット**: `feat(it-1): yaml_diff フレームワーク実装`
 
@@ -384,7 +389,7 @@ scripts/yaml_diff.py
    | step3 | diff_type 分類（9種） | 両差分関数内の条件分岐 | |
    | step4 | レポート生成 | `write_report()` | |
    | step5 | カバレッジチェック | `_collect_known_diff_types()` | |
-   | CLI | --before/--after/--out/--check-coverage | `main()` argparse | |
+   | CLI | --before/--after/--out/--check-coverage/--dry-run | `main()` argparse | |
    | exit | 0/1/2/3 | `main()` + `SystemExit()` | |
    | schema | 5フィールド | `write_report()` / `dataclasses.asdict()` | |
    | N-05 | 重複 RequirementId は先頭のみ | `diff_slot_yaml()` dict 構築 | |
@@ -474,5 +479,6 @@ python3 scripts/yaml_diff.py \
 | D-3 | `_collect_known_diff_types` の `spec_path` 引数 | cause_classifier_spec.json のパスを受け取るが、実際は `scripts/cause_classifier.py` を `Path(__file__).parent / 'cause_classifier.py'` で固定ロード。spec_path は将来の拡張用 |
 | D-4 | BudgetGroup変化の比較（Q-4: 方式a） | `json.dumps(tasklist, ensure_ascii=False)` で文字列化して比較（順序あり） |
 | D-5 | `uncovered_diff_types` フィールドの条件付き追加 | `--check-coverage` 未指定時はキー自体を出力しない（`report` dict に追加しない） |
+| D-8 | `--dry-run` 時の副作用ゼロ | mkdir もスキップ。stdout のみ出力して exit=0。`--out` は argparse で必須のまま（構文整合性維持） |
 | D-6 | YAML パースエラー時の mkdir 副作用 | `--out` 親ディレクトリの mkdir は引数検証後・ YAML 読み込み前に実行。YAML パースエラー（exit=3）時は JSON 未生成のまま空ディレクトリが残る。許容動作とする（実运用上の実害小） |
 | D-7 | spec.entries_schema.after の「エントリ追加の場合は空文字」は誤記載 | ファイルレベルの convention（ファイル追加: before="", after=filename）と整合し、エントリ追加: before="", after=RequirementId/BudgetGroupIDとする。一貫性を優先して spec 記載よりも直感的な設計を選択。 |

@@ -50,7 +50,7 @@
     }
   },
   "cli": {
-    "command": "python3 scripts/yaml_diff.py --before <DIR> --after <DIR> --out <FILE> [--check-coverage <SPEC_JSON>]",
+    "command": "python3 scripts/yaml_diff.py --before <DIR> --after <DIR> --out <FILE> [--check-coverage <SPEC_JSON>] [--dry-run]",
     "arguments": {
       "--before": {
         "type": "path（必須）",
@@ -67,10 +67,14 @@
       "--check-coverage": {
         "type": "path（省略可）",
         "description": "cause_classifier_spec.json のパス。指定すると未カバー diff_type を stdout に出力して終了コード 1 を返す。全カバー済みなら終了コード 0。"
+      },
+      "--dry-run": {
+        "type": "flag（省略可）",
+        "description": "差分の計算と stdout への出力は行うが、--out へのファイル書き出しをスキップする。diff_types と entries の件数を stdout に出力して終了コード 0 を返す。--out 引数は必須のまま（構文上の一貫性を維持するが、ファイルは生成しない）。"
       }
     },
     "exit_codes": {
-      "0": "正常完了（差分なし・差分あり問わず。--check-coverage で全カバー済みの場合も 0）",
+      "0": "正常完了（差分なし・差分あり問わず。--check-coverage で全カバー済みの場合も 0。--dry-run 指定時も 0）",
       "1": "--check-coverage で未カバー diff_type が存在した場合",
       "2": "引数エラー（--before/--after/--out 未指定等）",
       "3": "入力ファイル読み込みエラー"
@@ -111,7 +115,7 @@
     {
       "step": 5,
       "name": "カバレッジチェック（省略可）",
-      "description": "--check-coverage 指定時のみ実行。cause_classifier_spec.json のマッチャー一覧（M-01〜M-21）から対応する diff_type を収集し、yaml_diff_report の diff_types との差集合を計算する。未カバー diff_type があれば stdout に出力し終了コード 1 を返す。"
+      "description": "--check-coverage 指定時のみ実行。cause_classifier_spec.json のマッチャー一覧（M-01～M-21）から対応する diff_type を収集し、yaml_diff_report の diff_types との差集合を計算する。未カバー diff_type があれば stdout に出力し終了コード 1 を返す。--dry-run 指定時も実行する（ファイル書き出しはスキップ）。"
     }
   ],
   "output_schema": {
@@ -173,7 +177,7 @@
       "note": "ペアリングはファイル種別サフィックス（.slot.yaml / _budget.yaml）で行う。before/after でファイル名が異なるため（例: TSS4_1AR2_RC01_m01_schedreq_relax.slot.yaml vs TSS4_V1_m01.slot.yaml）、ファイル名完全一致では対応不可。1フォルダあたり各サフィックスは1ファイルずつ想定。"
     }
   ],
-  "_version_note": "0.1.1: セルフレビュー NG 修正（2026-05-17）。dependencies セクション追加（PyYAML）。coverage_check.input を詳細化（収集元のキーパスを明記）。 | v0.1.2: diff_type_rules に ファイル追加/消失（YAML）追加（Q-2）。N-04 実データ確認追記。N-06 ペアリング方式追記（Q-5/7）。",
+  "_version_note": "0.1.1: セルフレビュー NG 修正（2026-05-17）。dependencies セクション追加（PyYAML）。coverage_check.input を詳細化（収集元のキーパスを明記）。 | v0.1.2: diff_type_rules に ファイル追加/消失（YAML）追加（Q-2）。N-04 実データ確認追記。N-06 ペアリング方式追記（Q-5/7）。 | v0.1.3: --dry-run オプション追加（2026-05-18）。",
   "dependencies": {
     "PyYAML": {
       "version": ">=5.0",

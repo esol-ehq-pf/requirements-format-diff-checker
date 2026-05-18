@@ -34,7 +34,7 @@ description: yaml_diff.py をイテレーティブに実装・テスト・コミ
 
 | Iteration | 実装内容 | 対応 TC |
 |-----------|---------|--------|
-| IT-1 | フレームワーク（CLI・DiffEntry・終了コード） | TC-12a, TC-12b, TC-11 |
+| IT-1 | フレームワーク（CLI・DiffEntry・終了コード） | TC-12a, TC-12b, TC-11, TC-17 |
 | IT-2 | slot.yaml 差分抽出（6種） | TC-1〜6, TC-10 |
 | IT-3 | budget.yaml 差分抽出 + ファイルペアリング | TC-7, TC-8, TC-9 |
 | IT-4 | レポート JSON 出力 | TC-15, TC-15b |
@@ -63,9 +63,9 @@ description: yaml_diff.py をイテレーティブに実装・テスト・コミ
 
 | # | 確認内容 | 適用観点 |
 |---|---------|---------|
-| 1 | TC-11, TC-12a, TC-12b, TC-12c が全て PASS | — |
+| 1 | TC-11, TC-12a, TC-12b, TC-12c, TC-17 が全て PASS | — |
 | 2 | 既存 65 tests が全て PASS | — |
-| 3 | 副作用の実行順序（argparse → 存在チェック → mkdir → YAML読込 → write_report）がコードと一致している | R-4 |
+| 3 | 副作用の実行順序（argparse → 存在チェック → mkdir → YAML読込 → write_report）がコードと一致している。`--dry-run` 指定時は mkdir と write_report をスキップすることをコードで確認した | R-4 |
 | 4 | `DiffEntry` の `before`/`after` フィールドコメントが D-7（追加: `before=""`, `after=id`）と一致している | R-6 |
 | 5 | `spec_path` 引数が現時点では未使用と plan に明記されており、固定パスロードであることをコードで確認した | R-5 |
 
@@ -154,6 +154,7 @@ description: yaml_diff.py をイテレーティブに実装・テスト・コミ
 | TC-15 | 出力 JSON が `{"generated_at","before_dir","after_dir","diff_types","entries"}` を含み、`--check-coverage` 未指定時 `uncovered_diff_types` キーが**存在しない**こと | IT-4 |
 | TC-15b | entries 各要素が `{"file","diff_type","key_path","before","after"}` の**5フィールドのみ**（余分フィールドなし） | IT-4 |
 | TC-16 | 実データ（m01 before/after）で `returncode=0` かつ `BudgetGroup変化` 12件が含まれること | IT-6 |
+| TC-17 | `--dry-run` 指定時 → `--out` ファイルが生成されない・stdout に件数が出力される・exit=0 | IT-1 |
 
 ## セルフレビュー（IT-6 で必須）
 
